@@ -1,0 +1,69 @@
+name: build-ios-ipa
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: install
+        run: npm install
+
+      - name: copy www
+        run: node scripts/copy-www.mjs
+
+      - name: add ios platform
+        run: npx cap add ios
+
+      - name: sync
+        run: npx cap sync ios
+
+      - name: build ipa
+        run: |
+          set -euo pipefail
+          cd ios/App
+          APP=""
+          if xcodebuild -workspace App.xcworkspace -scheme App \
+              -configuration Release -destination "generic/platform=iOS" \
+              -derivedDataPath "$RUNNER_TEMP/dd" \
+              -archivePath "$RUNNER_TEMP/App.xcarchive" \
+              CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+              -quiet archive; then
+            APP="$RUNNER_TEMP/App.xcarchive/Products/Applications/App.app"
+          else
+            echo "archive failed, fallback to build"
+            xcodebuild -workspace App.xcworkspace -scheme App \
+              -configuration Release -sdk iphoneos \
+              -derivedDataPath "$RUNNER_TEMP/dd" \
+              CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+              -quiet build
+            APP="$RUNNER_TEMP/dd/Build/Products/Release-iphoneos/App.app"
+          fi
+          if [ ! -d "$APP" ]; then
+            echo "no app bundle at $APP"
+            find "$RUNNER_TEMP" -maxdepth 6 -name "*.app" -type d || true
+            exit 1
+          fi
+          cd "$RUNNER_TEMP"
+          rm -rf Payload zhanshen-gm-unsigned.ipa
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+          zip -qry zhanshen-gm-unsigned.ipa Payload
+          ls -lh zhanshen-gm-unsigned.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zhanshen-gm-ipa
+          path: ${{ runner.temp }}/zhanshen-gm-unsigned.ipa
+          retention-days: 30
+          if-no-files-found: error
