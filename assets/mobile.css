@@ -1,0 +1,377 @@
+/* ============================================================
+   mobile.css —— iPhone / 窄屏适配（在 style.css 之后加载）
+   桌面端保持原样，≤900px 时切到底部标签栏布局
+   ============================================================ */
+
+/* 全局：防止 iOS 横屏自动放大、撑破宽度 */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* 目录按钮只在手机上出现 */
+.mtoc {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  :root {
+    --tabbar-h: 60px;
+  }
+
+  #app {
+    display: block;
+    height: auto;
+    min-height: 100dvh;
+  }
+
+  /* ---------- 侧栏变成底部标签栏 ---------- */
+  aside {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: auto;
+    z-index: 60;
+    height: auto;
+    width: auto;
+    padding: 0;
+    border-right: 0;
+    border-top: 1px solid var(--line);
+    background: rgba(10, 12, 17, .96);
+    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(14px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  aside .brand,
+  aside .side-foot {
+    display: none;
+  }
+
+  #nav {
+    display: flex;
+    flex-direction: row;
+    gap: 0;
+    padding: 0;
+    margin: 0;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  #nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  #nav a {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    height: var(--tabbar-h);
+    padding: 6px 2px 4px;
+    font-size: 10.5px;
+    line-height: 1.2;
+    letter-spacing: 0;
+    border: 0;
+    border-radius: 0;
+    color: var(--txt3);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #nav a .ic {
+    font-size: 19px;
+    line-height: 1;
+  }
+  #nav a.on {
+    color: var(--gold2);
+    background: linear-gradient(180deg, rgba(212, 160, 48, .10), rgba(212, 160, 48, 0));
+    box-shadow: inset 0 2px 0 var(--gold);
+  }
+  #nav a .cnt {
+    position: absolute;
+    margin-left: 26px;
+    margin-top: -14px;
+    font-size: 9px;
+  }
+
+  /* ---------- 主区 ---------- */
+  main,
+  #main {
+    padding: 14px 12px calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px) + 24px);
+    max-width: 100%;
+    width: auto;
+    margin: 0;
+    min-height: auto;
+    height: auto;
+    overflow: visible;
+  }
+
+  .hd {
+    padding: 4px 2px 10px;
+    gap: 4px;
+  }
+  .hd h2 {
+    font-size: 21px;
+  }
+  .hd .sub {
+    font-size: 12px;
+    line-height: 1.6;
+  }
+
+  .card {
+    padding: 14px 13px;
+    border-radius: 12px;
+    margin-bottom: 12px;
+  }
+  .card h3 {
+    font-size: 15px;
+  }
+
+  .grid2 {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .row,
+  .row.tight {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  /* 「当前 / 上限」这类并排输入不要折成两行 */
+  .row.tight {
+    flex-wrap: nowrap;
+  }
+  .row.tight > input,
+  .row.tight > select {
+    flex: 1 1 0;
+    width: auto;
+    min-width: 0;
+  }
+
+  /* 输入控件：iOS 上字号 <16px 会自动放大页面 */
+  input,
+  select,
+  textarea,
+  button {
+    font-size: 16px;
+  }
+  input,
+  select,
+  textarea {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* 按钮变大、好点 */
+  button {
+    min-height: 42px;
+    padding: 10px 14px;
+  }
+  .wrap-actions {
+    gap: 8px;
+  }
+  .wrap-actions button {
+    flex: 1 1 auto;
+  }
+
+  /* ---------- 建档步骤条：横向滚动 ---------- */
+  .steps {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 6px;
+    scrollbar-width: none;
+  }
+  .steps::-webkit-scrollbar {
+    display: none;
+  }
+  .steps .st {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  /* ---------- 选项卡片 ---------- */
+  .opt {
+    padding: 13px 14px;
+  }
+  .opt .no {
+    min-width: 26px;
+  }
+
+  /* ---------- 跑团台 ---------- */
+  .chat {
+    max-height: none;
+    overflow: visible;
+  }
+  .msg {
+    grid-template-columns: 1fr;
+    gap: 4px;
+    padding: 12px 0;
+  }
+  .msg .who {
+    font-size: 11px;
+  }
+  .msg .body p {
+    line-height: 1.9;
+    font-size: 15.5px;
+  }
+  .msg-tex {
+    padding: 12px 10px;
+    font-size: 13px;
+    overflow-x: auto;
+  }
+  .composer textarea {
+    min-height: 84px;
+  }
+  .quickopts {
+    gap: 6px;
+  }
+  .quickopts button {
+    min-width: 40px;
+    min-height: 38px;
+    padding: 6px 10px;
+  }
+
+  /* ---------- 面板工坊 ---------- */
+  .panel-preview {
+    font-size: 13px;
+    padding: 12px 10px;
+    overflow-x: auto;
+  }
+  pre.code {
+    font-size: 11.5px;
+    padding: 12px 10px;
+    max-height: 260px;
+  }
+
+  /* ---------- 规则全书 ---------- */
+  .reader {
+    display: block;
+    height: auto;
+  }
+  .reader .doc {
+    overflow: visible;
+    padding: 0 0 40px;
+    font-size: 15px;
+  }
+  /* 目录在窄屏默认收起，点「☰ 目录 · 搜索」拉出抽屉 */
+  .reader .toc {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px));
+    top: auto;
+    width: auto;
+    max-height: 0;
+    overflow: hidden;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    z-index: 55;
+    display: block;
+    background: #0b0e14;
+    transition: max-height .18s ease;
+  }
+  .reader.toc-open .toc {
+    max-height: 68vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 12px 12px 18px;
+    border-top: 1px solid var(--line);
+    box-shadow: 0 -18px 40px rgba(0, 0, 0, .55);
+  }
+  .reader .toc a {
+    padding: 9px 8px;
+    font-size: 14px;
+  }
+  .reader .toc a.l1 {
+    font-size: 14.5px;
+  }
+  .reader .toc a.l2 {
+    padding-left: 20px;
+    font-size: 13.5px;
+  }
+  .mtoc {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    justify-content: center;
+    margin-bottom: 14px;
+  }
+  .reader .doc table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+  .tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    scrollbar-width: none;
+  }
+  .tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .tb {
+    flex: 0 0 auto;
+  }
+
+  /* ---------- 表格 / 代码 ---------- */
+  table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+
+  /* ---------- 骰子台 ---------- */
+  .roll-out {
+    font-size: 15px;
+  }
+  .roll-out .num {
+    font-size: 40px;
+  }
+
+  #toast {
+    bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px) + 12px);
+  }
+}
+
+/* 很窄的机器（iPhone SE 一类） */
+@media (max-width: 380px) {
+  #nav a {
+    min-width: 56px;
+    font-size: 10px;
+  }
+  .hd h2 {
+    font-size: 19px;
+  }
+  main,
+  #main {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+}
+
+/* 横屏：标签栏贴底但内容区更矮 */
+@media (max-width: 900px) and (orientation: landscape) {
+  .chat {
+    max-height: none;
+  }
+}
+
+/* 非触摸设备不需要大按钮 */
+@media (hover: none) and (pointer: coarse) {
+  button {
+    -webkit-tap-highlight-color: transparent;
+  }
+}

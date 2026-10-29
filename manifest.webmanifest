@@ -1,0 +1,17 @@
+{
+  "name": "斩神 · 自由大世界 GM 台",
+  "short_name": "斩神GM台",
+  "description": "把规则书、去 AI 味写作规约、数据美化与表格美化指令做成的一台本地跑团工具。",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a0c11",
+  "theme_color": "#0a0c11",
+  "lang": "zh-CN",
+  "icons": [
+    { "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icon-1024.png", "sizes": "1024x1024", "type": "image/png", "purpose": "any" }
+  ]
+}

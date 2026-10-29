@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>斩神 · 自由大世界 GM 台</title>
+
+<!-- iOS 添加到主屏幕 -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="斩神GM台">
+<meta name="format-detection" content="telephone=no">
+<meta name="theme-color" content="#0a0c11">
+
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" sizes="180x180" href="assets/icon-180.png">
+<link rel="apple-touch-icon" sizes="167x167" href="assets/icon-167.png">
+<link rel="apple-touch-icon" sizes="152x152" href="assets/icon-152.png">
+<link rel="apple-touch-icon" sizes="120x120" href="assets/icon-120.png">
+<link rel="icon" type="image/png" sizes="192x192" href="assets/icon-192.png">
+
+<link rel="stylesheet" href="assets/style.css">
+<link rel="stylesheet" href="assets/chat.css">
+<link rel="stylesheet" href="assets/mobile.css">
+</head>
+<body>
+<div id="app">
+  <aside>
+    <div class="brand">
+      <h1>斩神 · GM 台</h1>
+      <p>长夜未明 · 骰值已公示</p>
+    </div>
+    <nav id="nav"></nav>
+    <div class="side-foot" id="sidefoot"></div>
+  </aside>
+  <main id="main"></main>
+</div>
+<div id="toast"></div>
+
+<!-- 数据：由 tools/extract_*.py 从四份 docx 生成 -->
+<script src="data/rules.js"></script>
+<script src="data/writing.js"></script>
+<script src="data/beauty.js"></script>
+<script src="data/lexicon.js"></script>
+<script src="data/sequences.js"></script>
+
+<!-- 程序 -->
+<script src="assets/data.js"></script>
+<script src="assets/latex.js"></script>
+<script src="assets/scan.js"></script>
+<script src="assets/app.js"></script>
+<script>
+/* 离线缓存（http/https 下生效；file:// 直接跳过） */
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('service-worker.js').catch(function () {});
+  });
+}
+</script>
+</body>
+</html>
