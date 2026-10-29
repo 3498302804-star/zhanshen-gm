@@ -17,16 +17,25 @@ jobs:
           node-version: '20'
 
       - name: install
-        run: npm install
+        run: |
+          npm install --include=dev --no-audit --no-fund
+          echo "--- node_modules/.bin ---"
+          ls node_modules/.bin | sort || true
 
       - name: copy www
-        run: node scripts/copy-www.mjs
+        run: |
+          mkdir -p www
+          cp -R assets data www/
+          cp index.html manifest.webmanifest service-worker.js www/
+          echo "--- www 内容 ---"
+          find www -maxdepth 2 | sort | head -40
+          du -sh www
 
       - name: add ios platform
-        run: npx cap add ios
+        run: npx --yes cap add ios
 
       - name: sync
-        run: npx cap sync ios
+        run: npx --yes cap sync ios
 
       - name: build ipa
         run: |
