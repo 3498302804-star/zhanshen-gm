@@ -1,0 +1,27 @@
+{
+  "appId": "com.zhanshen.gm",
+  "appName": "斩神GM台",
+  "webDir": "www",
+  "bundledWebRuntime": false,
+  "ios": {
+    "contentInset": "always",
+    "backgroundColor": "#0a0c11",
+    "limitsNavigationsToAppBoundDomains": false,
+    "scrollEnabled": true
+  },
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    }
+  },
+  "server": {
+    "androidScheme": "https",
+    "iosScheme": "capacitor",
+    "allowNavigation": [
+      "api.deepseek.com",
+      "api.moonshot.cn",
+      "openrouter.ai",
+      "api.openai.com"
+    ]
+  }
+}
