@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>斩神 · 自由大世界 GM 台</title>
 
 <!-- iOS 添加到主屏幕 -->
@@ -52,7 +52,7 @@
 <script src="assets/app.js"></script>
 <script>
 /* 离线缓存（http/https 下生效；file:// 直接跳过） */
-if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+if ('serviceWorker' in navigator && location.protocol.startsWith('http') && !window.Capacitor) {
   window.addEventListener('load', function () {
     navigator.serviceWorker.register('service-worker.js').catch(function () {});
   });

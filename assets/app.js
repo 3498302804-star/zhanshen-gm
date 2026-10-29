@@ -1421,4 +1421,20 @@
     set S(v) { S = v; },
     go, render, persist, gmSystemPrompt, buildPrompt, dossierText, briefRows, fullRows, sendAI,
   };
+
+  // 真机诊断角标：只在 Capacitor 壳里出现，用来确认 WebView 的视口宽度
+  if (window.Capacitor) {
+    const badge = document.createElement('div');
+    badge.id = 'vwbadge';
+    badge.style.cssText = 'position:fixed;left:6px;bottom:76px;z-index:9999;font:10px/1.4 monospace;color:#d4a030;background:rgba(0,0,0,.6);padding:3px 6px;border-radius:5px;pointer-events:none;opacity:.85';
+    const upd = () => {
+      const vv = window.visualViewport;
+      badge.textContent = 'w' + window.innerWidth + ' h' + window.innerHeight +
+        ' sw' + (window.screen && screen.width) +
+        ' sc' + (vv ? Math.round(vv.scale * 100) / 100 : 1);
+    };
+    upd();
+    window.addEventListener('resize', upd);
+    document.body.appendChild(badge);
+  }
 })();
