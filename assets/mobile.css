@@ -382,3 +382,77 @@ html {
     -webkit-tap-highlight-color: transparent;
   }
 }
+
+/* ============================================================
+   最终压制 v2：栅格轨道的 min-content 溢出（真正的原因）
+   `1fr` 的最小值是 auto，等于内容的 min-content。
+   骰子台的 .dice-wrap 里塞了两个输入框，min-content 就有 486px，
+   于是整张卡片被撑到 486，页面横向溢出。
+   改成 minmax(0, 1fr) 才允许轨道缩到容器宽度。
+   ============================================================ */
+@media (max-width: 1100px) {
+  /* 顶部安全区：躲开刘海/状态栏 */
+  main,
+  #main {
+    padding-top: calc(env(safe-area-inset-top, 0px) + 14px);
+  }
+
+  /* 一列栅格全部允许收缩 */
+  .dice-wrap,
+  .grid2,
+  .grid3,
+  .opts,
+  .cards,
+  .pal-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  .dice-wrap > *,
+  .grid2 > *,
+  .grid3 > *,
+  .opts > *,
+  .cards > *,
+  .pal-grid > * {
+    min-width: 0 !important;
+  }
+
+  /* 卡片与卡内元素不许被内容撑开 */
+  .card,
+  .card * {
+    min-width: 0;
+  }
+  .card {
+    max-width: 100%;
+  }
+
+  /* 骰子台那排输入：手机上改成一行一个 */
+  .row {
+    flex-wrap: wrap !important;
+  }
+  .row > * {
+    flex: 1 1 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+  .row.tight > * {
+    flex: 0 1 auto !important;
+  }
+
+  /* 控件一律不越界 */
+  input,
+  select,
+  textarea,
+  button {
+    max-width: 100% !important;
+    box-sizing: border-box;
+  }
+
+  /* 长英文/代码允许断行，别再把容器顶开 */
+  .card,
+  .card > *,
+  .opt,
+  .opt > *,
+  .hint,
+  .muted {
+    overflow-wrap: anywhere;
+  }
+}
