@@ -28,7 +28,7 @@
 
   const DEF = {
     route: 'start',
-    cfg: { difficulty: 3, palette: 0, safeTex: false, panelMode: 'chat' },
+    cfg: { difficulty: 3, palette: 0, safeTex: false, panelMode: 'chat', foldOld: false, showAll: false },
     char: freshChar(),
     wizard: { step: 0, rolled: null },
     dice: [],
@@ -36,7 +36,7 @@
     lastScanText: '',
     ai: {
       mode: 'api', base: 'https://api.deepseek.com/chat/completions', model: 'deepseek-chat',
-      key: '', msgs: [], busy: false, error: '', draft: '',
+      key: '', msgs: [], busy: false, error: '', draft: '', streaming: '', synced: 0,
     },
   };
 
@@ -95,13 +95,13 @@
 
   /* ---------------- 路由 ---------------- */
   const ROUTES = [
-    ['start', '⚔', '开团建档'],
-    ['play', '🎬', '跑团台'],
-    ['dice', '🎲', '骰子台'],
-    ['panel', '📜', '面板工坊'],
-    ['scan', '🩺', 'AI 味闸门'],
-    ['book', '📖', '规则全书'],
-    ['save', '💾', '存档与回合'],
+    ['start', '⚔', '开团建档', '建档'],
+    ['play', '🎬', '跑团台', '跑团'],
+    ['dice', '🎲', '骰子台', '骰子'],
+    ['panel', '📜', '面板工坊', '面板'],
+    ['scan', '🩺', 'AI 味闸门', '闸门'],
+    ['book', '📖', '规则全书', '全书'],
+    ['save', '💾', '存档与回合', '存档'],
   ];
 
   function go(route) {
@@ -113,11 +113,11 @@
 
   function renderNav() {
     const nav = $('#nav');
-    nav.innerHTML = ROUTES.map(([id, ic, label]) => {
+    nav.innerHTML = ROUTES.map(([id, ic, label, short]) => {
       let cnt = '';
       if (id === 'dice') cnt = S.dice.length ? `<span class="cnt">${S.dice.length}</span>` : '';
       if (id === 'save') cnt = S.rounds.length ? `<span class="cnt">${S.rounds.length}</span>` : '';
-      return `<a class="${S.route === id ? 'on' : ''}" data-go="${id}"><span class="ic">${ic}</span>${label}${cnt}</a>`;
+      return `<a class="${S.route === id ? 'on' : ''}" data-go="${id}" title="${label}"><span class="ic">${ic}</span>${short || label}${cnt}</a>`;
     }).join('');
     $$('#nav a').forEach((a) => a.addEventListener('click', () => go(a.dataset.go)));
   }
@@ -728,43 +728,237 @@
     throw new Error(base + '\n（试过：' + tried.join('；') + '）');
   }
 
+  /* ---------- 上下文裁剪：留系统设定 + 最近几十条，别把 token 烧光 ---------- */
+  function trimHist(msgs) {
+    const sys = msgs.filter((m) => m.role === 'system').slice(0, 1);
+    const rest = msgs.filter((m) => m.role !== 'system');
+    const KEEP = 30;
+    if (rest.length <= KEEP) return sys.concat(rest);
+    const cut = rest.slice(-KEEP);
+    /* 历史别以 GM 的话打头，否则模型容易顺着上一段续写错位 */
+    while (cut.length && cut[0].role !== 'user') cut.shift();
+    const dropped = rest.length - cut.length;
+    return sys.concat([{
+      role: 'system',
+      content: '（前面 ' + dropped + ' 条往来已折叠，剧情以最新这段为准。）',
+    }], cut);
+  }
+
+  /* ---------- 流式（打字机） ----------
+     手机壳里的原生 HTTP 拿不到增量，流式只能走 fetch；fetch 不通就静默退回一次性请求。 */
+  let STREAM_CTL = null;
+  let _paintT = 0;
+
+  function paintStream(txt) {
+    const el = document.getElementById('stream_body');
+    if (!el) return;
+    el.innerHTML = richText(txt);
+    const box = $('#chat');
+    if (box) box.scrollTop = box.scrollHeight;
+  }
+
+  async function streamTry(ai, body) {
+    const url = normBase(ai.base);
+    const ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    STREAM_CTL = ctl;
+    let res;
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + ai.key,
+          Accept: 'text/event-stream',
+        },
+        body: JSON.stringify(body),
+        signal: ctl ? ctl.signal : undefined,
+      });
+    } catch (e) {
+      if (e && e.name === 'AbortError') throw e;
+      return { skip: true, why: 'fetch 不通（多半是跨域）' };
+    }
+    if (!res.ok) {
+      const t = await res.text().catch(() => '');
+      const err = new Error('HTTP ' + res.status + '　' + url + '\n' + String(t).slice(0, 400));
+      err.http = res.status;
+      throw err;
+    }
+    const ct = String(res.headers.get('content-type') || '');
+    if (!res.body || typeof res.body.getReader !== 'function' || ct.indexOf('event-stream') < 0) {
+      /* 服务端无视了 stream，按普通 JSON 读一次 */
+      const t = await res.text();
+      try {
+        const j = JSON.parse(t);
+        const c = j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
+        if (c) { ai.streaming = c; paintStream(c); return { text: c }; }
+      } catch (e) { /* 落到 skip */ }
+      return { skip: true, why: '返回的不是流' };
+    }
+    const reader = res.body.getReader();
+    const dec = new TextDecoder('utf-8');
+    let buf = '';
+    let out = '';
+    for (;;) {
+      let step;
+      try { step = await reader.read(); }
+      catch (e) {
+        if (e && e.name === 'AbortError') throw e;
+        throw new Error('流断了：' + ((e && e.message) || e));
+      }
+      if (step.done) break;
+      buf += dec.decode(step.value, { stream: true });
+      let ni;
+      while ((ni = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, ni).trim();
+        buf = buf.slice(ni + 1);
+        if (!line || line.indexOf('data:') !== 0) continue;
+        const d = line.slice(5).trim();
+        if (d === '[DONE]') { buf = ''; break; }
+        let j;
+        try { j = JSON.parse(d); } catch (e) { continue; }
+        const ch = j.choices && j.choices[0];
+        const delta = ch && ch.delta && ch.delta.content;
+        if (!delta) continue;
+        out += delta;
+        ai.streaming = out;
+        const now = Date.now();
+        if (now - _paintT > 120) { _paintT = now; paintStream(out); }
+      }
+    }
+    STREAM_CTL = null;
+    if (!out) return { skip: true, why: '流里没有正文' };
+    paintStream(out);
+    return { text: out };
+  }
+
+  function stopStream() {
+    if (STREAM_CTL) { try { STREAM_CTL.abort(); } catch (e) { /* ignore */ } }
+    STREAM_CTL = null;
+  }
+
   async function sendAI(text) {
     const ai = S.ai;
-    if (!text.trim()) return;
-    if (!ai.key) { toast('先在上面填 API Key'); return; }
+    if (!text || !text.trim()) return;
+    if (!ai.key) { toast('先在连接设置里填 API Key'); return; }
     if (ai.busy) return;
     pushSys();
     ai.msgs.push({ role: 'user', content: text.trim() });
     ai.draft = '';
     ai.busy = true;
     ai.error = '';
+    ai.streaming = '';
     persist();
     render();
 
-    const hist = ai.msgs.slice(-40);
+    const params = { model: ai.model, messages: trimHist(ai.msgs) };
+    /* reasoner 系列不接受 temperature / top_p，带上会 400 */
+    if (!/reasoner|r1|thinking/i.test(String(ai.model))) params.temperature = 1.15;
+
     try {
-      const body = { model: ai.model, messages: hist, stream: false };
-      // reasoner 系列不接受 temperature / top_p，带上会 400
-      if (!/reasoner|r1|thinking/i.test(String(ai.model))) body.temperature = 1.15;
-      const r = await apiPost(ai.base, body, ai.key);
-      if (!r.ok) {
-        const detail = typeof r.data === 'string' ? r.data : JSON.stringify(r.data);
-        throw new Error('HTTP ' + r.status + '　' + r.url + '\n' + String(detail).slice(0, 400));
+      let out = '';
+      try {
+        const s = await streamTry(ai, Object.assign({ stream: true, max_tokens: 2400 }, params));
+        if (!s.skip) out = s.text || '';
+        else if (s.why) console.info('流式跳过：' + s.why);
+      } catch (e) {
+        /* 4xx 是真错误（Key 错、没钱、限流），别拿一次性请求再撞一遍 */
+        if (e && e.http && e.http >= 400 && e.http < 500) throw e;
       }
-      const out = r.data && r.data.choices && r.data.choices[0] && r.data.choices[0].message && r.data.choices[0].message.content;
-      if (!out) throw new Error('返回里没有正文：' + JSON.stringify(r.data).slice(0, 300));
+      if (!out) {
+        const r = await apiPost(ai.base, Object.assign({ stream: false }, params), ai.key);
+        if (!r.ok) {
+          const detail = typeof r.data === 'string' ? r.data : JSON.stringify(r.data);
+          throw new Error('HTTP ' + r.status + '　' + r.url + '\n' + String(detail).slice(0, 400));
+        }
+        out = r.data && r.data.choices && r.data.choices[0] && r.data.choices[0].message && r.data.choices[0].message.content;
+        if (!out) throw new Error('返回里没有正文：' + JSON.stringify(r.data).slice(0, 300));
+      }
       ai.msgs.push({ role: 'assistant', content: out });
-      if (ai.msgs.length > 80) ai.msgs = ai.msgs.slice(0, 1).concat(ai.msgs.slice(-60));
+      if (ai.msgs.length > 90) ai.msgs = ai.msgs.slice(0, 1).concat(ai.msgs.slice(-60));
+      const hit = syncFromText(out);
+      if (hit.length) { ai.synced = hit.length; setTimeout(() => toast('面板已跟上：' + hit.slice(0, 4).join('／')), 260); }
     } catch (e) {
-      ai.error = String((e && e.message) || e);
+      ai.error = (e && e.name === 'AbortError')
+        ? '你自己停掉了这一次，想接着走就点重发。'
+        : String((e && e.message) || e);
       ai.msgs.pop();
       ai.draft = text;
     }
+    ai.streaming = '';
     ai.busy = false;
+    STREAM_CTL = null;
     persist();
     render();
     const box = $('#chat');
     if (box) box.scrollTop = box.scrollHeight;
+  }
+
+  /* 从 GM 的回复里把面板数值抓回来，省得每回合手动抄。
+     只认「属性名 数字/数字」这种写法，LaTeX 命令里的数字不会被误吃。 */
+  const SYNC_MAP = [
+    { k: 'hp', m: 'hpMax', re: /气血\s*[:：]?\s*(\d+)\s*\/\s*(\d+)/ },
+    { k: 'mp', m: 'mpMax', re: /精神力\s*[:：]?\s*(\d+)\s*\/\s*(\d+)/ },
+    { k: 'life', m: 'lifeMax', re: /(?:剩余)?寿命\s*[:：]?\s*(\d+)\s*\/\s*(\d+)/ },
+    { k: 'mind', re: /心性\s*[:：]?\s*(-?\d+)/ },
+    { k: 'money', re: /大夏币\s*[:：]?\s*(-?[\d,]+)/ },
+    { k: 'luck', re: /气运\s*[:：]?\s*(-?\d+)/ },
+    { k: 'karma', re: /因果\s*[:：]?\s*(-?\d+)/ },
+    { k: 'kills', re: /杀业\s*[:：]?\s*(-?\d+)/ },
+    { k: 'fame', re: /名望\s*[:：]?\s*(-?\d+)/ },
+  ];
+  const REALM_RE = /(盏境|池境|川境|海境|无量境|克莱因境|伪神|主神|至高神)\s*(初期|中期|后期|巅峰)?/;
+
+  /* 把一段 GM 回复剥成纯正文：去掉选项区、LaTeX 面板、分隔线 */
+  function narrativeOf(txt) {
+    let s = String(txt || '');
+    const cut = s.search(/\n\s*(?:—{2,}|-{3,}|={3,}|\*{3,}|【你可以】|你可以[:：])/);
+    if (cut > 0) s = s.slice(0, cut);
+    s = s.replace(/\\\([\s\S]*?\\\)/g, ' ');
+    s = s.replace(/\\\[[\s\S]*?\\\]/g, ' ');
+    s = s.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+    return s;
+  }
+
+  function syncFromText(txt) {
+    const c = S.char;
+    const src = String(txt || '');
+    const hit = [];
+    SYNC_MAP.forEach(({ k, m, re }) => {
+      const x = re.exec(src);
+      if (!x) return;
+      const v1 = Number(String(x[1]).replace(/,/g, ''));
+      if (!isFinite(v1)) return;
+      if (Number(c[k]) !== v1) { c[k] = v1; hit.push(k); }
+      if (m && x[2] != null) {
+        const v2 = Number(x[2]);
+        if (isFinite(v2) && v2 > 0 && Number(c[m]) !== v2) { c[m] = v2; hit.push(m); }
+      }
+    });
+    // 境界只在确实写成「境界：川境中期」或面板行首时同步，避免把台词里的词当升级
+    const rm = /(?:境界|修为)\s*[:：]\s*/.exec(src) ? REALM_RE.exec(src.slice(src.search(/(?:境界|修为)\s*[:：]/))) : null;
+    if (rm) {
+      if (c.realm !== rm[1]) { c.realm = rm[1]; hit.push('realm'); }
+      if (rm[2] && c.sub !== rm[2]) { c.sub = rm[2]; hit.push('sub'); }
+    }
+    return hit;
+  }
+
+  /* 一条窄状态条：跑团时不点开面板也知道自己还剩多少气 */
+  function statStrip(c) {
+    const pct = (v, m) => Math.max(0, Math.min(100, Math.round((Number(v) || 0) / (Number(m) || 1) * 100)));
+    const one = (icon, label, v, m, color) => `
+      <span class="sbar" title="${label} ${v}/${m}">
+        <span class="sbl">${icon}${label}</span>
+        <span class="sbtr"><i style="width:${pct(v, m)}%;background:${color}"></i></span>
+        <span class="sbv">${v}/${m}</span>
+      </span>`;
+    return `<div class="statstrip">
+      <span class="sn"><b>${esc(c.name || '无名')}</b> ${esc(c.realm || '盏境')}${esc(c.sub || '')} · ${esc(c.seqName || '未觉醒')}</span>
+      ${one('🟢', '气血', c.hp, c.hpMax, '#6fbf73')}
+      ${one('🔵', '精神', c.mp, c.mpMax, '#5dade2')}
+      ${one('🟠', '寿元', c.life, c.lifeMax, '#e0a030')}
+      <span class="sn2">🟡 ${Number(c.money || 0)}　🟣 ${Number(c.luck || 0)}　☯ ${Number(c.karma || 0)}</span>
+    </div>`;
   }
 
   function renderPlay(root) {
@@ -774,9 +968,14 @@
     const ready = !!(c.name || c.origin);
     const p = pal();
     const tex = LTX.assemble(briefRows(c, p), p, S.cfg.panelMode, { safe: S.cfg.safeTex });
+    const lastUser = (function () {
+      for (let i = msgs.length - 1; i >= 0; i--) if (msgs[i].role === 'user') return msgs[i].content;
+      return '';
+    })();
 
     root.innerHTML = `
       <div class="hd"><h2>跑团台</h2><span class="sub">填了 API Key 就能在这里直接演；不填就用复制模式</span></div>
+      ${ready ? statStrip(c) : ''}
       ${ready ? '' : '<div class="card" style="border-color:#8a5a2b"><h3>还没建档</h3><p class="muted">先去「开团建档」把难度、出身、禁墟、时间线走一遍，主角才有骨头。</p><div class="wrap-actions"><button class="primary" id="go_start">去建档</button></div></div>'}
 
       <details class="card" ${ai.key ? '' : 'open'}><summary><b>连接设置</b> <span class="muted small">${ai.key ? '已填 Key · ' + esc(ai.model) : '未填 · 只能用复制模式'}</span></summary>
@@ -784,8 +983,7 @@
           <div><label>API 地址</label><input id="a_base" value="${esc(ai.base)}" placeholder="https://api.deepseek.com/chat/completions"></div>
           <div><label>模型</label><input id="a_model" value="${esc(ai.model)}" placeholder="deepseek-chat"></div>
         </div>
-        <div style="margin-top:10px"><label>API Key（只存在你这台电脑的浏览器里）</label><input id="a_key" type="password" value="${esc(ai.key)}" placeholder="sk-..."></div>
-        <div class="hint" style="margin-top:8px">兼容 OpenAI 格式的都能用：DeepSeek、Moonshot、OpenRouter、本地 Ollama（http://127.0.0.1:11434/v1/chat/completions）等。如果用 file:// 打开被浏览器拦跨域，就运行「启动_本地服务器.bat」再进。</div>
+        <div style="margin-top:10px"><label>API Key（只存在这台设备的本地存档里）</label><input id="a_key" type="password" value="${esc(ai.key)}" placeholder="sk-..."></div>
         <div class="wrap-actions">
           <button class="primary" id="a_save">保存设置</button>
           <button id="a_test">测试连接</button>
@@ -796,17 +994,33 @@
         <div class="hint" id="a_testout" style="margin-top:8px"></div>
       </details>
 
-      ${ai.error ? `<div class="card" style="border-color:#c0392b"><h3>上一次出错</h3><pre class="code">${esc(ai.error)}</pre></div>` : ''}
+      ${ai.error ? `<div class="card" style="border-color:#c0392b"><h3>上一次没走通</h3><pre class="code">${esc(ai.error)}</pre><div class="wrap-actions"><button class="primary" id="c_retry">重发上一条</button><button id="c_clearerr">知道了</button></div></div>` : ''}
 
       <div class="card">
-        <h3>台上 <span class="tag">${msgs.length} 条</span></h3>
-        <div class="chat" id="chat">
-          ${msgs.length ? msgs.map((m) => `
-            <div class="msg ${m.role}">
+        <h3>台上 <span class="tag">${msgs.length} 条</span>${msgs.length ? '<button class="sm" id="c_fold" style="float:right">折叠旧记录</button>' : ''}</h3>
+        <div class="chat${S.cfg.foldOld ? ' folded' : ''}" id="chat">
+          ${msgs.length ? (function () {
+            const CAP = 24;
+            const hidden = (!S.cfg.showAll && msgs.length > CAP + 6) ? msgs.length - CAP : 0;
+            const shown = hidden ? msgs.slice(hidden) : msgs;
+            const base = msgs.length - shown.length;
+            return (hidden ? `<button class="sm more" id="c_more">↑ 上面还有 ${hidden} 条，点开</button>` : '')
+              + shown.map((m, i) => {
+                const idx = base + i;
+                return `
+            <div class="msg ${m.role}${(S.cfg.foldOld && idx < msgs.length - 4) ? ' old' : ''}">
               <div class="who">${m.role === 'user' ? '你' : 'GM'}</div>
               <div class="body">${m.role === 'user' ? '<p>' + esc(m.content).replace(/\n/g, '<br>') + '</p>' : richText(m.content)}</div>
-            </div>`).join('') : '<div class="muted" style="padding:24px;text-align:center">还没有开场。写一句你想做的事，比如「我推开门」。</div>'}
-          ${ai.busy ? '<div class="msg assistant"><div class="who">GM</div><div class="body"><p class="muted">正在写…</p></div></div>' : ''}
+              <button class="mcopy" data-i="${idx}" title="复制这一条">⧉</button>
+              ${(m.role === 'assistant' && idx === msgs.length - 1 && !ai.busy) ? '<button class="mredo" data-redo="1" title="删掉这段，让 GM 重写">↻ 重写</button>' : ''}
+            </div>`;
+              }).join('');
+          })() : `<div class="empty" style="padding:22px 6px;text-align:center">
+            <div class="muted" style="margin-bottom:12px">还没有开场。写一句你想做的事，比如「我推开门」。</div>
+            <button class="primary" id="c_open">按我的设定开场</button>
+            <div class="hint" style="margin-top:10px">会用你建档时的难度、出身、禁墟、地点和时间线，直接扔进第一幕。</div>
+          </div>`}
+          ${ai.busy ? `<div class="msg assistant live"><div class="who">GM</div><div class="body" id="stream_body">${ai.streaming ? richText(ai.streaming) : '<p class="muted thinking">正在写…</p>'}</div></div>` : ''}
         </div>
         <div class="composer">
           <div class="quickopts">
@@ -815,9 +1029,12 @@
           </div>
           <textarea id="c_in" rows="3" placeholder="你要做什么？写动作或原话，比如：我把刀插回鞘，退到墙角，问她是谁。">${esc(ai.draft || '')}</textarea>
           <div class="wrap-actions">
-            <button class="primary" id="c_send" ${ai.busy ? 'disabled' : ''}>${ai.busy ? '等待中…' : '发送（Ctrl+Enter）'}</button>
+            ${ai.busy
+              ? '<button class="primary" id="c_stop">停下</button>'
+              : `<button class="primary" id="c_send">发送</button>`}
             <button id="c_d20">掷个 1d20</button>
             <button id="c_d100">掷个 1d100</button>
+            <button id="c_sync" title="从 GM 最后那段回复里把气血／精神力／钱这些数抄回存档">同步面板数值</button>
             <button id="c_panel">复制当前面板 LaTeX</button>
           </div>
         </div>
@@ -825,27 +1042,28 @@
 
     const gs = $('#go_start');
     if (gs) gs.addEventListener('click', () => go('start'));
-    $('#a_save').addEventListener('click', () => {      ai.base = normBase($('#a_base').value.trim() || ai.base);
+    const op = $('#c_open');
+    if (op) op.addEventListener('click', () => sendAI('（开场。从我档案里的时间线和地点起手，直接把我扔进第一幕。不要在正文里复述设定。）'));
+    $('#a_save').addEventListener('click', () => {
+      ai.base = normBase($('#a_base').value.trim() || ai.base);
       ai.model = $('#a_model').value.trim() || ai.model;
       ai.key = $('#a_key').value.trim();
       pushSys();
-      persist(); render(); toast('已保存 · 地址 ' + ai.base);
+      persist(); render(); toast('已保存');
     });
     $('#a_test').addEventListener('click', async () => {
       const out = $('#a_testout');
       const base = normBase($('#a_base').value.trim() || ai.base);
       const key = ($('#a_key').value.trim() || ai.key);
       const model = ($('#a_model').value.trim() || ai.model);
-      out.textContent = '正在连接 ' + base + ' …';
+      out.innerHTML = '<span class="muted">连接中…</span>';
       try {
         const r = await apiPost(base, { model, messages: [{ role: 'user', content: 'ping' }], stream: false, max_tokens: 1 }, key);
-        const trail = (r.tried && r.tried.length > 1) ? '<br><span class="muted">试过：' + esc(r.tried.join(' ｜ ')) + '</span>' : '';
         if (r.ok) {
-          out.innerHTML = '<span style="color:#6fbf73">连通 ✓　HTTP ' + r.status + '</span>　' + esc(r.url) + trail;
+          out.innerHTML = '<span style="color:#6fbf73">连通 ✓　HTTP ' + r.status + '</span>';
         } else {
           const d = typeof r.data === 'string' ? r.data : JSON.stringify(r.data);
-          out.innerHTML = '<span style="color:#c0392b">HTTP ' + r.status + '</span>　' + esc(r.url) + trail
-            + '<br>' + esc(String(d).slice(0, 300));
+          out.innerHTML = '<span style="color:#c0392b">HTTP ' + r.status + '</span><br>' + esc(String(d).slice(0, 240));
         }
       } catch (e) {
         out.innerHTML = '<span style="color:#c0392b">没通</span><br>' + esc(String((e && e.message) || e)).replace(/\n/g, '<br>');
@@ -854,12 +1072,14 @@
     $('#a_new').addEventListener('click', () => {
       ai.msgs = [];
       ai.error = '';
+      ai.streaming = '';
       pushSys();
       persist(); render(); toast('新对话准备好了');
     });
     $('#a_copy_sys').addEventListener('click', () => copy(gmSystemPrompt(), 'GM 设定'));
     $('#a_export').addEventListener('click', () => {
       const txt = playMsgs().map((m) => (m.role === 'user' ? '【我】' : m.role === 'assistant' ? '【GM】' : '【设定】') + '\n' + m.content).join('\n\n');
+      if (window.Capacitor || /iPhone|iPad|iPod/.test(navigator.userAgent)) { copy(txt, '全部对话'); return; }
       const blob = new Blob([txt], { type: 'text/plain;charset=utf-8' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
@@ -870,10 +1090,52 @@
 
     const ta = $('#c_in');
     ta.addEventListener('input', () => { ai.draft = ta.value; });
+    const touch = window.matchMedia && window.matchMedia('(hover:none)').matches;
     ta.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); sendAI(ta.value); }
+      /* 中文输入法选词时回车是在确认候选，不能当成发送 */
+      if (e.isComposing || e.keyCode === 229) return;
+      if (e.key !== 'Enter') return;
+      /* 电脑上 Ctrl/⌘+Enter 发；手机上回车发（换行按 Shift+Enter） */
+      if (e.ctrlKey || e.metaKey || (touch && !e.shiftKey)) {
+        e.preventDefault();
+        sendAI(ta.value);
+        if (touch) ta.blur();
+      }
     });
-    $('#c_send').addEventListener('click', () => sendAI(ta.value));
+    /* 手机上点输入框，等键盘弹起来再把输入区滚进视野 */
+    ta.addEventListener('focus', () => { setTimeout(() => { try { ta.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (x) { /* ignore */ } }, 320); });
+    const snd = $('#c_send');
+    if (snd) snd.addEventListener('click', () => sendAI(ta.value));
+    const stp = $('#c_stop');
+    if (stp) stp.addEventListener('click', () => stopStream());
+    const rty = $('#c_retry');
+    if (rty) rty.addEventListener('click', () => { ai.error = ''; sendAI(lastUser); });
+    const cer = $('#c_clearerr');
+    if (cer) cer.addEventListener('click', () => { ai.error = ''; persist(); render(); });
+    const fld = $('#c_fold');
+    if (fld) fld.addEventListener('click', () => { S.cfg.foldOld = !S.cfg.foldOld; persist(); render(); });
+    const more = $('#c_more');
+    if (more) more.addEventListener('click', () => { S.cfg.showAll = true; persist(); render(); });
+    $$('.mredo').forEach((b) => b.addEventListener('click', () => {
+      if (ai.busy) return;
+      /* 删掉最后那段 GM 回复，用它前面那条「你」重跑一次 */
+      let cut = -1;
+      for (let i = msgs.length - 1; i >= 0; i--) if (msgs[i].role === 'assistant') { cut = i; break; }
+      if (cut < 0) return;
+      const prev = (function () {
+        for (let i = cut - 1; i >= 0; i--) if (msgs[i].role === 'user') return msgs[i].content;
+        return '';
+      })();
+      msgs.splice(cut, 1);
+      ai.error = '';
+      persist();
+      if (!prev) { render(); toast('前面没有你的那句，重写不了'); return; }
+      sendAI(prev);
+    }));
+    $$('.mcopy').forEach((b) => b.addEventListener('click', () => {
+      const m = msgs[Number(b.dataset.i)];
+      if (m) copy(m.content, m.role === 'user' ? '你那条' : 'GM 那段');
+    }));
     $('#c_d20').addEventListener('click', () => {
       const v = roll(20);
       ta.value = (ta.value ? ta.value + ' ' : '') + '（我掷了 1d20：' + v + '）';
@@ -885,6 +1147,17 @@
       ai.draft = ta.value; ta.focus();
     });
     $('#c_panel').addEventListener('click', () => copy(tex, '面板 LaTeX'));
+    $('#c_sync').addEventListener('click', () => {
+      const last = (function () {
+        for (let i = msgs.length - 1; i >= 0; i--) if (msgs[i].role === 'assistant') return msgs[i].content;
+        return '';
+      })();
+      if (!last) { toast('还没有 GM 的回复'); return; }
+      const hit = syncFromText(last);
+      persist();
+      if (hit.length) { render(); toast('抄回来 ' + hit.length + ' 项：' + hit.slice(0, 4).join('／')); }
+      else toast('最后那段里没找到面板数值');
+    });
     $$('[data-opt]').forEach((b) => b.addEventListener('click', () => {
       const n = b.dataset.opt;
       ta.value = n === '0' ? '' : '我选 ' + n + '。';
@@ -1415,7 +1688,7 @@
             <div><label>承诺／因果</label><input id="r_promise" placeholder="答应赵空城照顾她"></div>
           </div>
           <div style="margin-top:10px"><label>本回合摘要</label><textarea id="r_sum" rows="3" placeholder="发生了什么，只记事实"></textarea></div>
-          <div class="wrap-actions"><button class="primary" id="btn_addround">记一条</button></div>
+          <div class="wrap-actions"><button class="primary" id="btn_addround">记一条</button><button id="btn_grab">从最后一段回复抓摘要</button></div>
         </div>
       </div>
       <div class="card">
@@ -1448,14 +1721,34 @@
       });
       persist(); render(); toast('记下了');
     });
+    const grab = $('#btn_grab');
+    if (grab) grab.addEventListener('click', () => {
+      const last = (function () {
+        for (let i = S.ai.msgs.length - 1; i >= 0; i--) if (S.ai.msgs[i].role === 'assistant') return S.ai.msgs[i].content;
+        return '';
+      })();
+      if (!last) { toast('跑团台里还没有 GM 的回复'); return; }
+      const txt = narrativeOf(last);
+      $('#r_title').value = '第 ' + (S.rounds.length + 1) + ' 回合';
+      $('#r_sum').value = txt.length > 260 ? txt.slice(0, 260) + '…' : txt;
+      if (!$('#r_place').value) $('#r_place').value = S.char.location || '';
+      toast('已把最后那段正文填进摘要，改完点「记一条」');
+    });
     $$('[data-del]').forEach((b) => b.addEventListener('click', () => {
       S.rounds.splice(Number(b.dataset.del), 1); persist(); render();
     }));
     $('#btn_exp').addEventListener('click', () => {
-      const blob = new Blob([JSON.stringify(S, null, 2)], { type: 'application/json' });
+      const json = JSON.stringify(S, null, 2);
+      const name = '斩神存档_' + new Date().toISOString().slice(0, 10) + '.json';
+      /* 手机上 WKWebView 不认 a[download]，直接给剪贴板 */
+      if (window.Capacitor || /iPhone|iPad|iPod/.test(navigator.userAgent)) {
+        copy(json, '存档 JSON（' + (json.length / 1024).toFixed(1) + ' KB）');
+        return;
+      }
+      const blob = new Blob([json], { type: 'application/json' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = '斩神存档_' + new Date().toISOString().slice(0, 10) + '.json';
+      a.download = name;
       a.click();
       URL.revokeObjectURL(a.href);
       toast('已导出');
@@ -1515,22 +1808,8 @@
   window.__ZS = {
     get S() { return S; },
     set S(v) { S = v; },
-    go, render, persist, gmSystemPrompt, buildPrompt, dossierText, briefRows, fullRows, sendAI, normBase, apiPost,
+    go, render, persist, gmSystemPrompt, buildPrompt, dossierText, briefRows, fullRows, sendAI,
+    normBase, apiPost, trimHist, streamTry, statStrip, syncFromText, narrativeOf,
   };
 
-  // 真机诊断角标：只在 Capacitor 壳里出现，用来确认 WebView 的视口宽度
-  if (window.Capacitor) {
-    const badge = document.createElement('div');
-    badge.id = 'vwbadge';
-    badge.style.cssText = 'position:fixed;left:6px;bottom:76px;z-index:9999;font:10px/1.4 monospace;color:#d4a030;background:rgba(0,0,0,.6);padding:3px 6px;border-radius:5px;pointer-events:none;opacity:.85';
-    const upd = () => {
-      const vv = window.visualViewport;
-      badge.textContent = 'w' + window.innerWidth + ' h' + window.innerHeight +
-        ' sw' + (window.screen && screen.width) +
-        ' sc' + (vv ? Math.round(vv.scale * 100) / 100 : 1);
-    };
-    upd();
-    window.addEventListener('resize', upd);
-    document.body.appendChild(badge);
-  }
 })();

@@ -190,12 +190,13 @@ html {
     flex: 1 1 auto;
   }
 
-  /* ---------- 建档步骤条：横向滚动 ---------- */
+  /* ---------- 建档步骤条：两行铺开（比横滚好找） ---------- */
   .steps {
-    overflow-x: auto;
-    flex-wrap: nowrap;
+    overflow-x: visible;
+    flex-wrap: wrap;
+    gap: 5px;
     -webkit-overflow-scrolling: touch;
-    padding-bottom: 6px;
+    padding-bottom: 2px;
     scrollbar-width: none;
   }
   .steps::-webkit-scrollbar {
@@ -204,6 +205,8 @@ html {
   .steps .st {
     flex: 0 0 auto;
     white-space: nowrap;
+    font-size: 11.5px;
+    padding: 4px 8px;
   }
 
   /* ---------- 选项卡片 ---------- */
