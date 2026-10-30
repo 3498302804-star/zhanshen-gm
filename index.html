@@ -23,6 +23,27 @@
 <link rel="stylesheet" href="assets/style.css">
 <link rel="stylesheet" href="assets/chat.css">
 <link rel="stylesheet" href="assets/mobile.css">
+<link rel="stylesheet" href="assets/ui.css">
+<script>
+/* 尽早在首帧之前定下主题，避免闪一下白/黑 */
+(function () {
+  try {
+    var raw = localStorage.getItem('zs_gm_slots_v1');
+    var t = 'auto';
+    if (raw) {
+      var st = JSON.parse(raw);
+      var rec = null;
+      if (st && st.list) for (var i = 0; i < st.list.length; i++) if (st.list[i].id === st.active) rec = st.list[i];
+      if (!rec && st && st.list && st.list.length) rec = st.list[0];
+      if (rec && rec.data && rec.data.cfg && rec.data.cfg.theme) t = rec.data.cfg.theme;
+    }
+    var dark = t === 'dark' ? true : t === 'light' ? false
+      : !(window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches);
+    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+    document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+  } catch (e) { document.documentElement.setAttribute('data-theme', 'dark'); }
+})();
+</script>
 </head>
 <body>
 <div id="app">
@@ -36,6 +57,7 @@
   </aside>
   <main id="main"></main>
 </div>
+<div id="topbar"></div>
 <div id="toast"></div>
 
 <!-- 数据：由 tools/extract_*.py 从四份 docx 生成 -->

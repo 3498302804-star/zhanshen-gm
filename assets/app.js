@@ -28,7 +28,8 @@
 
   const DEF = {
     route: 'start',
-    cfg: { difficulty: 3, palette: 0, safeTex: false, panelMode: 'chat', foldOld: false, showAll: false },
+    slotId: '',
+    cfg: { difficulty: 3, palette: 0, safeTex: false, panelMode: 'chat', foldOld: false, showAll: false, theme: 'auto' },
     char: freshChar(),
     wizard: { step: 0, rolled: null },
     dice: [],
@@ -42,26 +43,195 @@
 
   let S = load();
 
+  /* ---------------- 多存档 ---------------- */
+  const SLOT_KEY = 'zs_gm_slots_v1';
+
+  function readSlots() {
+    try {
+      const o = JSON.parse(localStorage.getItem(SLOT_KEY) || 'null');
+      if (o && Array.isArray(o.list)) return o;
+    } catch (e) { /* ignore */ }
+    return { active: '', list: [] };
+  }
+  function writeSlots(o) {
+    try { localStorage.setItem(SLOT_KEY, JSON.stringify(o)); }
+    catch (e) { if (!_lsWarned) { _lsWarned = true; try { toast('本地空间不够了，存档可能存不下'); } catch (x) { /* ignore */ } } }
+  }
+  function newId() { return 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5); }
+  function slotTitle(s) {
+    const c = (s && s.char) || {};
+    return (c.name || '未命名') + ' · ' + (c.realm || '盏境') + (c.sub || '');
+  }
+  function metaOf(s) {
+    const ai = s.ai || {};
+    return {
+      name: slotTitle(s),
+      diff: (s.cfg && s.cfg.difficulty) || 3,
+      rounds: (s.rounds || []).length,
+      msgs: (ai.msgs || []).length,
+      money: (s.char && s.char.money) || 0,
+      t: Date.now(),
+    };
+  }
+  /** 把当前 S 写回它自己的存档槽 */
+  function syncSlot() {
+    if (!S.slotId) S.slotId = newId();
+    const st = readSlots();
+    const rec = { id: S.slotId, meta: metaOf(S), data: JSON.parse(JSON.stringify(S)) };
+    const i = st.list.findIndex((x) => x.id === S.slotId);
+    if (i >= 0) st.list[i] = rec; else st.list.push(rec);
+    st.active = S.slotId;
+    writeSlots(st);
+  }
+
+  function mergeState(o) {
+    const m = Object.assign(JSON.parse(JSON.stringify(DEF)), o || {});
+    m.char = Object.assign(freshChar(), (o && o.char) || {});
+    m.cfg = Object.assign({}, DEF.cfg, (o && o.cfg) || {});
+    m.wizard = Object.assign({}, DEF.wizard, (o && o.wizard) || {});
+    if (!m.ai) m.ai = JSON.parse(JSON.stringify(DEF.ai));
+    if (!Array.isArray(m.rounds)) m.rounds = [];
+    if (!Array.isArray(m.dice)) m.dice = [];
+    return m;
+  }
+
   function load() {
     try {
+      const st = readSlots();
+      if (st.list.length) {
+        const rec = st.list.find((x) => x.id === st.active) || st.list[0];
+        if (rec && rec.data) {
+          const m = mergeState(rec.data);
+          m.slotId = rec.id;
+          return m;
+        }
+      }
+      /* 老版本单档迁移 */
       const raw = localStorage.getItem(KEY);
       if (!raw) return JSON.parse(JSON.stringify(DEF));
       const o = JSON.parse(raw);
-      const merged = Object.assign(JSON.parse(JSON.stringify(DEF)), o);
-      merged.char = Object.assign(freshChar(), o.char || {});
-      merged.cfg = Object.assign({}, DEF.cfg, o.cfg || {});
-      merged.wizard = Object.assign({}, DEF.wizard, o.wizard || {});
-      return merged;
+      const m = mergeState(o);
+      m.slotId = newId();
+      return m;
     } catch (e) {
       return JSON.parse(JSON.stringify(DEF));
     }
   }
+
+  function loadSlot(id) {
+    const st = readSlots();
+    const rec = st.list.find((x) => x.id === id);
+    if (!rec || !rec.data) { toast('这个存档读不出来'); return; }
+    if (id === S.slotId) { closeSheet(); return; }
+    persist();                       // 先把当前这份落盘
+    applyRec(rec);
+    toast('已载入：' + (rec.meta && rec.meta.name ? rec.meta.name : id));
+  }
+
+  /** 把某条记录变成当前状态（不落盘旧档） */
+  function applyRec(rec) {
+    const m = mergeState(rec.data);
+    m.slotId = rec.id;
+    S = m;
+    const st = readSlots();
+    st.active = rec.id;
+    writeSlots(st);
+    applyTheme();
+    persist(); render();
+  }
+
+  function newSlot() {
+    persist();
+    const st = readSlots();
+    const fresh = JSON.parse(JSON.stringify(DEF));
+    fresh.slotId = newId();
+    fresh.cfg = Object.assign({}, DEF.cfg, { palette: S.cfg.palette, theme: S.cfg.theme });
+    fresh.route = 'start';
+    S = fresh;
+    st.list.push({ id: fresh.slotId, meta: metaOf(fresh), data: JSON.parse(JSON.stringify(fresh)) });
+    st.active = fresh.slotId;
+    writeSlots(st);
+    persist();
+    applyTheme();
+    go('start');
+    toast('新存档已开，从头建档');
+  }
+
+  function delSlot(id) {
+    const st = readSlots();
+    const i = st.list.findIndex((x) => x.id === id);
+    if (i < 0) return;
+    const nm = (st.list[i].meta && st.list[i].meta.name) || '这个存档';
+    if (!confirm('删掉「' + nm + '」？里面的角色、对话、回合记录都会没。')) return;
+    const wasCur = id === S.slotId;
+    st.list.splice(i, 1);
+    writeSlots(st);                  // 先写，避免 persist 把刚删的又写回来
+    if (wasCur) {
+      if (st.list.length) { closeSheet(); applyRec(st.list[0]); return; }
+      localStorage.removeItem(SLOT_KEY);
+      localStorage.removeItem(KEY);
+      S = JSON.parse(JSON.stringify(DEF));
+      S.slotId = newId();
+      persist(); applyTheme(); go('start');
+      return;
+    }
+    closeSheet();
+    openSlotSheet();
+    toast('删掉了');
+  }
+
+  function renameSlot(id) {
+    const st = readSlots();
+    const rec = st.list.find((x) => x.id === id);
+    if (!rec) return;
+    const cur = (rec.data && rec.data.char && rec.data.char.name) || '';
+    const t = window.prompt('给这个存档改个角色名（会影响面板上的名字）', cur);
+    if (t == null) return;
+    const nm = t.trim().slice(0, 20);
+    if (!nm) return;
+    if (rec.data && rec.data.char) rec.data.char.name = nm;
+    rec.meta = Object.assign({}, rec.meta, { name: nm + ' · ' + ((rec.data && rec.data.char && rec.data.char.realm) || '盏境') + ((rec.data && rec.data.char && rec.data.char.sub) || '') });
+    writeSlots(st);
+    if (id === S.slotId) { S.char.name = nm; persist(); }
+    render();
+    closeSheet();
+    openSlotSheet();
+    toast('改名了');
+  }
+
+  /* ---------------- 主题 ---------------- */
+  function systemDark() {
+    return !(window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches);
+  }
+  function isDark() {
+    const t = (S.cfg && S.cfg.theme) || 'auto';
+    if (t === 'dark') return true;
+    if (t === 'light') return false;
+    return systemDark();
+  }
+  function applyTheme() {
+    const dark = isDark();
+    const root = document.documentElement;
+    root.setAttribute('data-theme', dark ? 'dark' : 'light');
+    root.style.colorScheme = dark ? 'dark' : 'light';
+    const m = document.querySelector('meta[name="theme-color"]');
+    if (m) m.setAttribute('content', dark ? '#0a0c11' : '#f3efe6');
+  }
+  function setTheme(v) {
+    S.cfg.theme = v;
+    persist();
+    applyTheme();
+    render();
+    toast(v === 'auto' ? '跟着系统走' : v === 'light' ? '白天模式' : '黑夜模式');
+  }
+
   let _lsWarned = false;
   function persist() {
     try { localStorage.setItem(KEY, JSON.stringify(S)); }
     catch (e) {
       if (!_lsWarned) { _lsWarned = true; try { toast('浏览器不让存本地档，这次的进度可能丢'); } catch (x) { /* ignore */ } }
     }
+    try { syncSlot(); } catch (e) { /* ignore */ }
   }
 
   function toast(msg) {
@@ -133,6 +303,7 @@
     else if (S.route === 'scan') renderScan(main);
     else if (S.route === 'book') renderBook(main);
     else if (S.route === 'save') renderSave(main);
+    renderTopbar();
     renderSideFoot();
   }
 
@@ -299,9 +470,8 @@
     });
     const restart = $('#btn_restart');
     if (restart) restart.addEventListener('click', () => {
-      if (!confirm('清空当前角色重新建档？（骰史与回合记录保留）')) return;
-      S.char = freshChar(); S.wizard = { step: 0, rolled: null };
-      persist(); render();
+      if (!confirm('开一份全新存档、从头建档？\n（当前这份会留在存档列表里，之后还能切回来）')) return;
+      newSlot();
     });
 
     if (step === 4) bindAwaken();
@@ -1776,6 +1946,145 @@
     });
   }
 
+  /* ============================================================
+     顶栏：主题 / 存档
+     ============================================================ */
+  function renderTopbar() {
+    const tb = $('#topbar');
+    if (!tb) return;
+    const dark = isDark();
+    const auto = (S.cfg.theme || 'auto') === 'auto';
+    tb.innerHTML = `
+      <button id="tb_theme" title="切换白天 / 黑夜">
+        <span class="ic">${dark ? '🌙' : '☀️'}</span><span class="lb">${auto ? '跟随系统' : dark ? '黑夜' : '白天'}</span>
+      </button>
+      <button id="tb_slot" title="存档">
+        <span class="ic">🗂</span><span class="lb">${esc((S.char.name || '未建档'))}</span>
+      </button>`;
+    $('#tb_theme').addEventListener('click', () => {
+      setTheme(isDark() ? 'light' : 'dark');
+    });
+    $('#tb_slot').addEventListener('click', openSlotSheet);
+  }
+
+  function closeSheet() {
+    const s = $('#sheet');
+    if (s) s.remove();
+  }
+
+  function openSheet(html) {
+    closeSheet();
+    const d = document.createElement('div');
+    d.id = 'sheet';
+    d.className = 'on';
+    d.innerHTML = `<div class="mask" data-close="1"></div><div class="pane">${html}</div>`;
+    document.body.appendChild(d);
+    d.querySelector('.mask').addEventListener('click', closeSheet);
+    return d;
+  }
+
+  function openSlotSheet() {
+    const st = readSlots();
+    const list = st.list.slice().sort((a, b) => ((b.meta && b.meta.t) || 0) - ((a.meta && a.meta.t) || 0));
+    const rows = list.length
+      ? list.map((r) => {
+        const m = r.meta || {};
+        const cur = r.id === S.slotId;
+        const dt = m.t ? new Date(m.t) : null;
+        const when = dt ? `${dt.getMonth() + 1}月${dt.getDate()}日 ${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}` : '';
+        return `<div class="slotrow ${cur ? 'cur' : ''}" data-slot="${r.id}">
+          <div class="s-main">
+            <div class="s-name">${esc(m.name || r.id)}</div>
+            <div class="s-meta">${esc(diOf(m.diff) || '')}难度 ｜ ${m.msgs || 0} 段对话 ｜ ${m.rounds || 0} 条回合${when ? ' ｜ ' + when : ''}</div>
+          </div>
+          ${cur ? '<span class="s-cur">当前</span>' : ''}
+          <button class="s-btn" data-rename="${r.id}">改名</button>
+          <button class="s-btn danger" data-del="${r.id}">删</button>
+        </div>`;
+      }).join('')
+      : '<div class="muted small" style="padding:8px 0">还没有其他存档。点下面「新建存档」开一份新的。</div>';
+
+    const d = openSheet(`
+      <h4>🗂 存档</h4>
+      <div class="sh-sub">每份存档各自带角色、对话、骰史和回合记录。切过去就接着那一条线走。</div>
+      ${rows}
+      <div class="sh-act">
+        <button class="primary" id="sh_new">新建存档</button>
+        <button id="sh_cur_save">导出当前存档</button>
+      </div>
+
+      <div class="sh-sec">
+        <div class="sh-lab">外观</div>
+        <div class="themerow">
+          <button data-theme="auto" class="${(S.cfg.theme || 'auto') === 'auto' ? 'on' : ''}">跟随系统</button>
+          <button data-theme="light" class="${S.cfg.theme === 'light' ? 'on' : ''}">☀️ 白天</button>
+          <button data-theme="dark" class="${S.cfg.theme === 'dark' ? 'on' : ''}">🌙 黑夜</button>
+        </div>
+      </div>
+
+      <div class="sh-sec">
+        <div class="sh-lab">导入</div>
+        <button id="sh_imp" style="width:100%">从 JSON 文件导入成新存档</button>
+        <input type="file" id="sh_file" accept=".json" style="display:none">
+      </div>`);
+
+    d.querySelectorAll('[data-slot]').forEach((el) => el.addEventListener('click', (ev) => {
+      if (ev.target.closest('[data-del],[data-rename]')) return;
+      const id = el.dataset.slot;
+      closeSheet();
+      if (id !== S.slotId) loadSlot(id);
+    }));
+    d.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      delSlot(b.dataset.del);
+    }));
+    d.querySelectorAll('[data-rename]').forEach((b) => b.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      renameSlot(b.dataset.rename);
+    }));
+    d.querySelectorAll('[data-theme]').forEach((b) => b.addEventListener('click', () => {
+      setTheme(b.dataset.theme);
+      closeSheet();
+    }));
+    d.querySelector('#sh_new').addEventListener('click', () => { closeSheet(); newSlot(); });
+    d.querySelector('#sh_cur_save').addEventListener('click', () => {
+      const json = JSON.stringify(S, null, 2);
+      if (window.Capacitor || /iPhone|iPad|iPod/.test(navigator.userAgent)) { copy(json, '存档 JSON'); return; }
+      const blob = new Blob([json], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = '斩神存档_' + ((S.char.name || '无名') + '_' + new Date().toISOString().slice(0, 10)) + '.json';
+      a.click();
+      URL.revokeObjectURL(a.href);
+      toast('已导出');
+    });
+    d.querySelector('#sh_imp').addEventListener('click', () => d.querySelector('#sh_file').click());
+    d.querySelector('#sh_file').addEventListener('change', (e) => {
+      const f = e.target.files[0];
+      if (!f) return;
+      const fr = new FileReader();
+      fr.onload = () => {
+        try {
+          const o = JSON.parse(fr.result);
+          const m = mergeState(o);
+          m.slotId = newId();
+          const st2 = readSlots();
+          st2.list.push({ id: m.slotId, meta: metaOf(m), data: JSON.parse(JSON.stringify(m)) });
+          st2.active = m.slotId;
+          writeSlots(st2);
+          closeSheet();
+          loadSlot(m.slotId);
+        } catch (err) { toast('这个文件不是本软件的存档'); }
+      };
+      fr.readAsText(f);
+    });
+  }
+
+  function diOf(n) {
+    const d = G.DIFFICULTIES.find((x) => x.id === Number(n));
+    return d ? d.name : '';
+  }
+
   /* ---------------- 启动 ---------------- */
   window.addEventListener('error', (e) => {
     const bar = document.createElement('div');
@@ -1791,11 +2100,20 @@
   });
 
   document.addEventListener('DOMContentLoaded', () => {
+    applyTheme();
     if (!S.cfg.panelType) S.cfg.panelType = 'brief';
     if (!S.ai) S.ai = JSON.parse(JSON.stringify(DEF.ai));
+    if (!S.slotId) S.slotId = newId();
     const h = (location.hash || '').replace('#', '');
     if (ROUTES.some(([id]) => id === h)) S.route = h;
+    persist();
     render();
+    if (window.matchMedia) {
+      const mq = window.matchMedia('(prefers-color-scheme: light)');
+      const on = () => { if ((S.cfg.theme || 'auto') === 'auto') { applyTheme(); renderTopbar(); } };
+      if (mq.addEventListener) mq.addEventListener('change', on);
+      else if (mq.addListener) mq.addListener(on);
+    }
   });
 
   // data 就绪检查
@@ -1810,6 +2128,7 @@
     set S(v) { S = v; },
     go, render, persist, gmSystemPrompt, buildPrompt, dossierText, briefRows, fullRows, sendAI,
     normBase, apiPost, trimHist, streamTry, statStrip, syncFromText, narrativeOf,
+    readSlots, writeSlots, newId, loadSlot, newSlot, delSlot, renameSlot, syncSlot, metaOf, applyTheme, isDark, setTheme, openSlotSheet,
   };
 
 })();

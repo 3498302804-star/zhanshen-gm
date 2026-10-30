@@ -48,7 +48,7 @@ html {
     padding: 0;
     border-right: 0;
     border-top: 1px solid var(--line);
-    background: rgba(10, 12, 17, .96);
+    background: var(--asideBg);
     -webkit-backdrop-filter: blur(14px);
     backdrop-filter: blur(14px);
     padding-bottom: env(safe-area-inset-bottom, 0px);
@@ -289,7 +289,7 @@ html {
     box-shadow: none;
     z-index: 55;
     display: block;
-    background: #0b0e14;
+    background: var(--deepBg);
     transition: max-height .18s ease;
   }
   .reader.toc-open .toc {

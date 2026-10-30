@@ -4,15 +4,15 @@
 .msg:first-child{border-top:0}
 .msg .who{font-size:12px;letter-spacing:.12em;color:var(--txt3);padding-top:3px}
 .msg.user .who{color:var(--gold)}
-.msg.user .body{background:#141a24;border:1px solid var(--line);border-radius:10px;padding:10px 14px}
-.msg.assistant .who{color:#8fb3c8}
+.msg.user .body{background:var(--hover);border:1px solid var(--line);border-radius:10px;padding:10px 14px}
+.msg.assistant .who{color:var(--assistantWho)}
 .msg .body p{margin:0 0 10px;line-height:1.95}
 .msg .body p:last-child{margin-bottom:0}
-.msg-tex{margin:14px 0;padding:14px 16px;background:#0d1117;border:1px solid var(--line);border-radius:10px;overflow-x:auto;line-height:1.9}
+.msg-tex{margin:14px 0;padding:14px 16px;background:var(--texBg);border:1px solid var(--line);border-radius:10px;overflow-x:auto;line-height:1.9}
 .msg-tex .bar{display:inline-block;vertical-align:middle;border-radius:2px;margin:0 1px}
 .msg-tex .har{display:inline-block;border-top:1px solid currentColor;width:5em;vertical-align:middle}
 .composer{margin-top:14px;border-top:1px solid var(--line);padding-top:14px}
-.composer textarea{width:100%;background:#0e131b;border:1px solid var(--line);border-radius:10px;color:var(--txt);padding:12px 14px;font:inherit;line-height:1.8;resize:vertical}
+.composer textarea{width:100%;background:var(--composerBg);border:1px solid var(--line);border-radius:10px;color:var(--txt);padding:12px 14px;font:inherit;line-height:1.8;resize:vertical}
 .composer textarea:focus{outline:none;border-color:var(--gold)}
 .quickopts{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
 .quickopts button{min-width:34px}
@@ -46,12 +46,12 @@ details.card[open] summary{margin-bottom:4px}
 
 /* 跑团台顶部的气血条 */
 .statstrip{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:10px 14px;margin:0 0 14px;
-  background:#0d1117;border:1px solid var(--line);border-radius:10px;font-size:12px;line-height:1.4}
+  background:var(--texBg);border:1px solid var(--line);border-radius:10px;font-size:12px;line-height:1.4}
 .statstrip .sn{color:var(--gold2);font-size:13px}
 .statstrip .sn b{color:var(--txt);margin-right:4px}
 .statstrip .sn2{color:var(--txt3);white-space:nowrap}
 .sbar{display:flex;align-items:center;gap:6px;min-width:0}
 .sbar .sbl{color:var(--txt2);white-space:nowrap}
 .sbar .sbtr{display:block;width:56px;height:6px;background:#D5D8DC;border-radius:3px;overflow:hidden;flex:0 0 auto}
-.sbar .sbtr i{display:block;height:100%;background:#6fbf73;border-radius:3px;transition:width .4s}
+.sbar .sbtr i{display:block;height:100%;background:var(--hpBar);border-radius:3px;transition:width .4s}
 .sbar .sbv{color:var(--txt3);font-variant-numeric:tabular-nums;white-space:nowrap}
