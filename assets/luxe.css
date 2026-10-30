@@ -1,0 +1,713 @@
+/* ============================================================
+   华丽层（luxe.css）
+   只做“质感”，不改结构、不改规约里锁死的色值。
+   加载顺序在 style/chat/mobile/ui 之后，用来盖最后的观感。
+   ============================================================ */
+
+:root {
+  /* 金箔渐变的五个色阶（暗夜） */
+  --f1: #fdf3d2;
+  --f2: #e7c47c;
+  --f3: #a97c2a;
+  --f4: #f8e9bb;
+  --f5: #7d5a1c;
+  --serif: "Songti SC", "STSong", "Times New Roman", "Noto Serif SC", "Source Han Serif SC", "SimSun", serif;
+  --hair: rgba(212, 160, 48, .22);
+  --hair2: rgba(212, 160, 48, .10);
+  --glass: rgba(18, 22, 31, .55);
+  --noise: .032;
+  --glowG: 0 0 22px rgba(212, 160, 48, .18);
+}
+
+html[data-theme="light"] {
+  --f1: #8a6420;
+  --f2: #b98a24;
+  --f3: #6b4a0c;
+  --f4: #d3a63c;
+  --f5: #5c3f08;
+  --hair: rgba(169, 124, 24, .26);
+  --hair2: rgba(169, 124, 24, .12);
+  --glass: rgba(255, 253, 248, .6);
+  --noise: .018;
+  --glowG: 0 0 20px rgba(169, 124, 24, .14);
+}
+
+/* ---------- 底：暗夜穹顶 + 细格 + 噪点 ---------- */
+html, body {
+  background-color: var(--bg);
+}
+
+body::before {
+  background-image:
+    linear-gradient(0deg, var(--hair2) 1px, transparent 1px),
+    linear-gradient(90deg, var(--hair2) 1px, transparent 1px),
+    radial-gradient(1200px 600px at 15% -10%, var(--veil1), transparent 60%),
+    radial-gradient(900px 500px at 100% 0%, var(--veil2), transparent 60%);
+  background-size: 44px 44px, 44px 44px, auto, auto;
+  opacity: .5;
+  mask-image: radial-gradient(120% 90% at 50% 0%, #000 0%, rgba(0, 0, 0, .35) 55%, transparent 100%);
+  -webkit-mask-image: radial-gradient(120% 90% at 50% 0%, #000 0%, rgba(0, 0, 0, .35) 55%, transparent 100%);
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: var(--noise);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.75' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* 水墨大字水印（只在宽屏出现，纯装饰） */
+#app::after {
+  content: "斩";
+  position: fixed;
+  right: -2vw;
+  bottom: -14vh;
+  font-family: var(--serif);
+  font-size: min(52vw, 720px);
+  line-height: .82;
+  font-weight: 700;
+  color: var(--gold);
+  opacity: .045;
+  pointer-events: none;
+  z-index: -1;
+  user-select: none;
+  letter-spacing: 0;
+}
+html[data-theme="light"] #app::after { opacity: .045; }
+@media (max-width: 1100px) { #app::after { display: none; } }
+
+/* ---------- 金箔工具类 ---------- */
+.foil,
+.brand h1,
+.hd h2,
+.card > h3,
+.roll-out .num,
+.sheet-ttl {
+  background-image: linear-gradient(100deg, var(--f3) 0%, var(--f2) 16%, var(--f1) 32%, var(--f4) 46%, var(--f2) 62%, var(--f3) 76%, var(--f1) 92%, var(--f2) 100%);
+  background-size: 220% 100%;
+  background-position: 0% 50%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: foilSlide 14s linear infinite alternate;
+}
+@keyframes foilSlide {
+  from { background-position: 0% 50%; }
+  to { background-position: 100% 50%; }
+}
+@supports not ((-webkit-background-clip: text) or (background-clip: text)) {
+  .foil, .brand h1, .hd h2, .card > h3, .roll-out .num, .sheet-ttl {
+    color: var(--gold2);
+    background: none;
+    -webkit-text-fill-color: currentColor;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .foil, .brand h1, .hd h2, .card > h3, .roll-out .num, .sheet-ttl { animation: none; }
+}
+
+/* ---------- 侧栏：印章 + 金属竖线 ---------- */
+aside {
+  border-right: 1px solid transparent;
+  background-image:
+    linear-gradient(180deg, var(--bgA), var(--bg) 65%, var(--bgA)),
+    linear-gradient(180deg, transparent, var(--hair), transparent);
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+  background-size: auto, 1px 100%;
+  background-position: 0 0, 100% 0;
+  background-repeat: no-repeat;
+  box-shadow: inset -22px 0 46px -34px var(--shadow);
+}
+
+.brand {
+  padding: 22px 18px 16px;
+  border-bottom: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.brand::after {
+  content: "";
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--hair), transparent);
+}
+.brand::before {
+  content: "斩";
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  font-family: var(--serif);
+  font-size: 23px;
+  font-weight: 700;
+  line-height: 1;
+  color: #1a1206;
+  border-radius: 3px;
+  background-image: linear-gradient(150deg, var(--f1), var(--f2) 30%, var(--f3) 58%, var(--f4) 80%, var(--f2));
+  box-shadow: 0 6px 18px -6px rgba(0, 0, 0, .8), inset 0 1px 0 rgba(255, 255, 255, .55), 0 0 0 1px var(--hair);
+  transform: rotate(-2.2deg);
+  letter-spacing: 0;
+}
+html[data-theme="light"] .brand::before {
+  color: #fffdf8;
+  box-shadow: 0 6px 16px -8px rgba(90, 60, 10, .6), inset 0 1px 0 rgba(255, 255, 255, .4), 0 0 0 1px var(--hair);
+}
+.brand h1 {
+  font-family: var(--serif);
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: .18em;
+  margin: 0;
+}
+.brand p {
+  margin: 0;
+  font-size: 10.5px;
+  letter-spacing: .22em;
+  color: var(--txt3);
+}
+
+nav a {
+  border-radius: 4px;
+  position: relative;
+  letter-spacing: .04em;
+  overflow: hidden;
+}
+nav a::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 22%;
+  bottom: 22%;
+  width: 2px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, transparent, var(--gold2), transparent);
+  opacity: 0;
+  transition: opacity .18s;
+}
+nav a:hover { background: var(--hover); }
+nav a.on {
+  background: linear-gradient(90deg, var(--navOnBg), transparent 82%);
+  border-color: transparent;
+  box-shadow: inset 0 0 0 1px var(--hair2);
+}
+nav a.on::before { opacity: 1; box-shadow: var(--glowG); }
+nav a.on .ic { filter: drop-shadow(0 0 5px rgba(212, 160, 48, .45)); }
+
+.side-foot { border-top: 0; position: relative; }
+.side-foot::before {
+  content: "";
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  top: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--hair), transparent);
+}
+
+/* ---------- 页首标题：字形 + 两侧细饰 ---------- */
+.hd {
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  position: relative;
+}
+.hd::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: linear-gradient(90deg, var(--hair), var(--hair2) 42%, transparent);
+}
+.hd h2 {
+  font-family: var(--serif);
+  font-size: 23px;
+  font-weight: 700;
+  letter-spacing: .14em;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, .25);
+}
+.hd h2::after {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 12px;
+  vertical-align: 6px;
+  transform: rotate(45deg);
+  background-image: linear-gradient(135deg, var(--f2), var(--f3));
+  box-shadow: 0 0 8px rgba(212, 160, 48, .35);
+}
+.hd .sub { letter-spacing: .08em; color: var(--txt3); }
+.hint { letter-spacing: .02em; }
+
+/* ---------- 卡片：玻璃 + 渐变描金 ---------- */
+.card {
+  position: relative;
+  background-image:
+    linear-gradient(168deg, var(--hover2) 0%, var(--bg2) 34%, var(--bg2) 100%);
+  border: 1px solid transparent;
+  border-radius: 12px;
+  box-shadow: 0 20px 44px -30px var(--shadow), inset 0 1px 0 rgba(255, 255, 255, .035);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+html[data-theme="light"] .card {
+  background-image: linear-gradient(168deg, #fffefb 0%, var(--bg2) 40%, #fdfaf2 100%);
+  box-shadow: 0 18px 40px -32px rgba(90, 70, 30, .45), inset 0 1px 0 #fff;
+}
+.card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  pointer-events: none;
+  background: linear-gradient(150deg, var(--hair) 0%, var(--hair2) 26%, transparent 52%, var(--hair2) 78%, var(--hair) 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+.card > h3 {
+  font-family: var(--serif);
+  font-size: 15.5px;
+  letter-spacing: .14em;
+  font-weight: 700;
+  padding-bottom: 10px;
+  margin-bottom: 14px;
+  position: relative;
+  background-image: linear-gradient(100deg, var(--f3), var(--f2) 18%, var(--f1) 34%, var(--f4) 50%, var(--f2) 66%, var(--f3) 82%, var(--f1));
+  background-size: 220% 100%;
+}
+.card > h3::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: linear-gradient(90deg, var(--hair), transparent 70%);
+}
+.card > h3 .tag {
+  font-family: inherit;
+  letter-spacing: .06em;
+  border-color: var(--hair);
+  background: var(--hair2);
+  color: var(--txt3);
+  -webkit-text-fill-color: currentColor;
+}
+/* 标题里嵌的按钮/徽章别被金箔裁切吞掉 */
+.card > h3 button,
+.card > h3 .tag,
+.card > h3 span,
+.hd h2 ~ *,
+.roll-out .num ~ * {
+  -webkit-text-fill-color: currentColor;
+  color: inherit;
+}
+.card > h3 button { color: var(--txt2); }
+.card > h3 button:hover { color: var(--gold2); }
+.card > h3 .tag { color: var(--txt3); }
+
+/* ---------- 按钮：金属压边 ---------- */
+button, .btn {
+  border-radius: 5px;
+  letter-spacing: .04em;
+  background-image: linear-gradient(180deg, var(--btnBg), var(--sunk));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .045), 0 2px 6px -4px var(--shadow);
+}
+button:hover, .btn:hover {
+  border-color: var(--hair);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .07), 0 0 0 1px var(--hair2), 0 6px 18px -12px var(--gold);
+}
+button.primary {
+  background-image: linear-gradient(180deg, var(--f4) 0%, var(--f2) 16%, var(--f3) 52%, var(--f2) 84%, var(--f4) 100%);
+  border-color: var(--f3);
+  color: #1a1206;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, .28);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5), inset 0 -1px 0 rgba(0, 0, 0, .18), 0 10px 26px -16px rgba(212, 160, 48, .9);
+}
+button.primary:hover {
+  filter: brightness(1.06) saturate(1.05);
+  color: #1a1206;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .6), 0 10px 30px -12px rgba(212, 160, 48, .95);
+}
+html[data-theme="light"] button.primary { color: #fffdf8; text-shadow: 0 1px 0 rgba(0, 0, 0, .22); }
+button.ghost { background-image: none; background: transparent; box-shadow: none; }
+button.sm { border-radius: 4px; }
+
+/* ---------- 输入：内凹 + 聚焦描金 ---------- */
+input, select, textarea {
+  border-radius: 5px;
+  background-image: linear-gradient(180deg, var(--sunk), var(--inputBg));
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, .28);
+}
+html[data-theme="light"] input, html[data-theme="light"] select, html[data-theme="light"] textarea {
+  box-shadow: inset 0 1px 2px rgba(120, 100, 60, .12);
+}
+input:focus, select:focus, textarea:focus {
+  border-color: var(--gold);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, .25), 0 0 0 3px var(--hair2), 0 0 18px -6px var(--gold);
+}
+label { letter-spacing: .06em; }
+
+/* ---------- 选项卡：左金脊 + 悬浮 ---------- */
+.opt {
+  border-radius: 7px;
+  border-color: var(--line);
+  background-image: linear-gradient(180deg, var(--sunk2), var(--sunk3));
+  position: relative;
+  overflow: hidden;
+}
+.opt::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: linear-gradient(180deg, transparent, var(--hair), transparent);
+  transition: .16s;
+}
+.opt:hover {
+  border-color: var(--hair);
+  transform: translateY(-1px);
+  box-shadow: 0 12px 26px -20px var(--shadow);
+}
+.opt:hover::before { background: linear-gradient(180deg, transparent, var(--gold2), transparent); }
+.opt.sel {
+  border-color: var(--gold);
+  background-image: linear-gradient(180deg, var(--selBg), var(--sunk3));
+  box-shadow: inset 0 0 0 1px var(--selRing), 0 12px 30px -22px var(--gold);
+}
+.opt.sel::before { background: linear-gradient(180deg, transparent, var(--gold2), transparent); box-shadow: var(--glowG); }
+.opt .no {
+  border-radius: 3px;
+  font-family: var(--serif);
+  font-weight: 700;
+  background-image: linear-gradient(180deg, var(--chipBg), var(--sunk));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .05);
+}
+.opt.sel .no {
+  background-image: linear-gradient(160deg, var(--f2), var(--f3) 70%, var(--f5));
+  color: #1a1206;
+  box-shadow: 0 2px 8px -3px var(--gold);
+}
+.opt .t { letter-spacing: .02em; }
+
+/* ---------- 步骤条：菱形节点 ---------- */
+.steps .st {
+  border-radius: 3px;
+  letter-spacing: .06em;
+  background-image: linear-gradient(180deg, var(--sunk2), var(--sunk));
+}
+.steps .st.cur {
+  border-radius: 3px;
+  color: #1a1206;
+  background-image: linear-gradient(160deg, var(--f2), var(--f3) 72%, var(--f5));
+  border-color: var(--f3);
+  box-shadow: 0 6px 18px -12px var(--gold), inset 0 1px 0 rgba(255, 255, 255, .45);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, .25);
+}
+html[data-theme="light"] .steps .st.cur { color: #fffdf8; text-shadow: 0 1px 0 rgba(0, 0, 0, .2); }
+
+/* ---------- 骰台 ---------- */
+.roll-out {
+  border-radius: 14px;
+  background-image:
+    radial-gradient(520px 220px at 50% -20%, var(--selBg), transparent 68%),
+    linear-gradient(180deg, var(--sunk3), var(--deepBg));
+  box-shadow: inset 0 0 0 1px var(--hair2), 0 26px 60px -42px var(--shadow);
+  position: relative;
+  overflow: hidden;
+}
+.roll-out::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(150deg, var(--hair) 0%, transparent 30%, transparent 70%, var(--hair2) 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  padding: 1px;
+  border-radius: inherit;
+}
+.roll-out .num {
+  font-family: var(--serif);
+  font-size: 62px;
+  font-weight: 700;
+  filter: drop-shadow(0 6px 26px rgba(212, 160, 48, .35));
+}
+.roll-out .num.fail { filter: drop-shadow(0 6px 24px rgba(176, 58, 52, .4)); }
+.roll-out .num.crit { filter: drop-shadow(0 6px 24px rgba(63, 158, 107, .4)); }
+.roll-out .verdict { letter-spacing: .18em; font-family: var(--serif); }
+.roll-out .detail, .roll-out .formula { letter-spacing: .04em; }
+
+.log .item { border-radius: 4px; border-color: var(--hair2); }
+
+/* ---------- 面板预览保持规约色，只加外光 ---------- */
+.panel-preview { box-shadow: 0 24px 50px -34px var(--shadow); }
+
+/* ---------- 药丸 ---------- */
+.pill { border-radius: 3px; letter-spacing: .06em; box-shadow: inset 0 0 0 .5px rgba(255, 255, 255, .04); }
+
+/* ---------- 分隔线：中间菱形 ---------- */
+hr.sep { border: 0; height: 1px; margin: 20px 0; background: linear-gradient(90deg, transparent, var(--hair), transparent); position: relative; }
+hr.sep::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  margin: -2.5px 0 0 -2.5px;
+  transform: rotate(45deg);
+  background: var(--gold);
+  opacity: .75;
+  box-shadow: 0 0 8px rgba(212, 160, 48, .5);
+}
+
+/* ---------- 跑团台：书页感 ---------- */
+.msg { border-top-color: var(--hair2); }
+.msg .who {
+  font-family: var(--serif);
+  font-size: 12.5px;
+  letter-spacing: .22em;
+  font-weight: 700;
+}
+.msg.user .who { background-image: none; color: var(--gold2); }
+.msg.assistant .body {
+  font-family: var(--serif);
+  font-size: 15.5px;
+  line-height: 2.05;
+  letter-spacing: .012em;
+}
+.msg.assistant .body p { margin: 0 0 13px; }
+.msg.user .body {
+  background-image: linear-gradient(180deg, var(--selBg), var(--hover));
+  border-color: var(--hair);
+  border-radius: 6px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04);
+}
+.msg-tex {
+  border-radius: 6px;
+  border-color: var(--hair2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .03), 0 16px 34px -30px var(--shadow);
+}
+
+.statstrip {
+  border-radius: 6px;
+  border-color: var(--hair2);
+  background-image: linear-gradient(180deg, var(--hover2), var(--texBg));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .035), 0 14px 30px -28px var(--shadow);
+}
+.statstrip .sn b { font-family: var(--serif); letter-spacing: .06em; }
+
+.composer { border-top-color: var(--hair2); }
+.composer textarea {
+  border-radius: 6px;
+  font-size: 15px;
+  line-height: 1.85;
+}
+.quickopts button {
+  min-width: 34px;
+  font-family: var(--serif);
+  font-weight: 700;
+  border-radius: 4px;
+}
+
+/* ---------- 顶栏与弹层 ---------- */
+#topbar .lb, #topbar button {
+  border-radius: 999px;
+  border-color: var(--hair);
+  background-image: linear-gradient(180deg, var(--glass), var(--bg2));
+  backdrop-filter: blur(12px) saturate(1.1);
+  -webkit-backdrop-filter: blur(12px) saturate(1.1);
+  box-shadow: 0 10px 26px -18px var(--shadow), inset 0 1px 0 rgba(255, 255, 255, .07);
+  letter-spacing: .04em;
+}
+#sheet .pane {
+  border-radius: 16px 16px 0 0;
+  border: 1px solid transparent;
+  background-image: linear-gradient(180deg, var(--bg2), var(--bgA)), linear-gradient(160deg, var(--hair), transparent 40%, var(--hair));
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+  box-shadow: 0 -30px 70px -40px var(--shadow);
+}
+.sheet-ttl {
+  font-family: var(--serif);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: .16em;
+}
+#sheet .slotrow {
+  border-radius: 6px;
+  border-color: var(--hair2);
+  background-image: linear-gradient(180deg, var(--hover2), var(--sunk3));
+}
+#sheet .slotrow.cur {
+  border-color: var(--gold);
+  background-image: linear-gradient(180deg, var(--selBg), var(--sunk3));
+  box-shadow: inset 0 0 0 1px var(--selRing), 0 12px 28px -22px var(--gold);
+}
+#sheet .s-name { font-family: var(--serif); letter-spacing: .04em; }
+
+/* ---------- 规则全书：纸面 ---------- */
+.reader { background: linear-gradient(180deg, var(--bgA), var(--bg)); }
+.reader .toc {
+  border-right: 1px solid transparent;
+  background-image: linear-gradient(180deg, var(--bgA), var(--bg) 60%, var(--bgA)), linear-gradient(180deg, transparent, var(--hair), transparent);
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+  background-size: auto, 1px 100%;
+  background-position: 0 0, 100% 0;
+  background-repeat: no-repeat;
+}
+.reader .toc .q input { border-radius: 4px; letter-spacing: .04em; }
+.reader .toc a { border-radius: 3px; letter-spacing: .02em; }
+.reader .toc a.on {
+  background-image: linear-gradient(90deg, var(--navOnBg), transparent 88%);
+  box-shadow: inset 2px 0 0 var(--gold);
+}
+.reader .toc a.l1 {
+  font-family: var(--serif);
+  letter-spacing: .08em;
+  color: var(--gold2);
+}
+.reader .doc h1 {
+  font-family: var(--serif);
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: .16em;
+  color: var(--gold2);
+  border-bottom: 0;
+  padding: 0 0 12px;
+  margin: 40px 0 18px;
+  position: relative;
+}
+.reader .doc h1::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: linear-gradient(90deg, var(--hair), var(--hair2) 55%, transparent);
+}
+.reader .doc h2 {
+  font-family: var(--serif);
+  letter-spacing: .1em;
+  font-weight: 700;
+  padding-left: 12px;
+  position: relative;
+}
+.reader .doc h2::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: .38em;
+  bottom: .3em;
+  width: 2px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--gold2), var(--hair));
+}
+.reader .doc h3 { font-family: var(--serif); letter-spacing: .06em; }
+.reader .doc p { letter-spacing: .012em; line-height: 2; }
+.reader .doc th { font-family: var(--serif); letter-spacing: .06em; }
+.mtoc { border-radius: 4px; letter-spacing: .06em; }
+
+/* ---------- 闸门 / 存档等细节 ---------- */
+.hit { border-radius: 4px; background-image: linear-gradient(180deg, var(--sunk2), var(--sunk3)); }
+.gauge { font-family: var(--serif); font-weight: 700; letter-spacing: .1em; }
+.marked { border-radius: 6px; line-height: 2.05; }
+pre.code { border-radius: 5px; border-color: var(--hair2); }
+.kv .k { letter-spacing: .06em; }
+#toast {
+  border-radius: 4px;
+  border-color: var(--hair);
+  box-shadow: 0 18px 44px -22px var(--shadow), inset 0 1px 0 rgba(255, 255, 255, .06);
+  letter-spacing: .05em;
+}
+details.card summary { font-family: var(--serif); letter-spacing: .08em; }
+
+/* ---------- 滚动条 ---------- */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, var(--hair), var(--sb));
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover { background: linear-gradient(180deg, var(--gold), var(--sbHover)); }
+
+/* ---------- 宽屏留白 ---------- */
+@media (min-width: 1240px) {
+  #main:not(.wide) > * { max-width: 1120px; margin-left: auto; margin-right: auto; }
+}
+
+/* ---------- 桌面：页面外框 + 四角金饰 ---------- */@media (min-width: 1101px) {
+  #main:not(.wide)::after {
+    content: "";
+    position: fixed;
+    inset: 8px 8px 8px calc(232px + 8px);
+    pointer-events: none;
+    border: 1px solid var(--hair2);
+    border-radius: 2px;
+    z-index: 0;
+  }
+  #main:not(.wide)::before {
+    content: "";
+    position: fixed;
+    inset: 8px 8px 8px calc(232px + 8px);
+    pointer-events: none;
+    z-index: 1;
+    background-image:
+      linear-gradient(var(--gold), var(--gold)), linear-gradient(var(--gold), var(--gold)),
+      linear-gradient(var(--gold), var(--gold)), linear-gradient(var(--gold), var(--gold)),
+      linear-gradient(var(--gold), var(--gold)), linear-gradient(var(--gold), var(--gold)),
+      linear-gradient(var(--gold), var(--gold)), linear-gradient(var(--gold), var(--gold));
+    background-repeat: no-repeat;
+    background-size: 18px 1px, 1px 18px, 18px 1px, 1px 18px, 18px 1px, 1px 18px, 18px 1px, 1px 18px;
+    background-position:
+      left top, left top,
+      right top, right top,
+      left bottom, left bottom,
+      right bottom, right bottom;
+    opacity: .45;
+  }
+}
+
+/* ---------- 手机：底部标签栏金属化 ---------- */
+@media (max-width: 1100px) {
+  aside {
+    border-top: 1px solid transparent;
+    background-image: linear-gradient(180deg, var(--bgA), var(--bg)), linear-gradient(90deg, transparent, var(--hair), transparent);
+    background-origin: border-box;
+    background-clip: padding-box, border-box;
+    background-size: auto, 100% 1px;
+    background-position: 0 0, 0 0;
+    background-repeat: no-repeat;
+    box-shadow: 0 -18px 40px -30px var(--shadow);
+  }
+  #nav a { border-radius: 0; }
+  #nav a.on {
+    box-shadow: inset 0 2px 0 var(--gold), inset 0 18px 26px -22px var(--gold);
+  }
+  #nav a.on::before { display: none; }
+  .hd h2 { font-size: 20px; }
+  .msg.assistant .body { font-size: 15px; line-height: 1.98; }
+  .card { border-radius: 10px; }
+  main, #main { padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
+}

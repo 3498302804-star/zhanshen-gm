@@ -1,5 +1,5 @@
 /* 离线缓存。改了前端代码就把 VERSION 加一，用户下次打开自动换新。 */
-const VERSION = 'zs-gm-v2';
+const VERSION = 'zs-gm-v3';
 
 const ASSETS = [
   './',
@@ -9,6 +9,7 @@ const ASSETS = [
   './assets/chat.css',
   './assets/mobile.css',
   './assets/ui.css',
+  './assets/luxe.css',
   './assets/data.js',
   './assets/latex.js',
   './assets/scan.js',

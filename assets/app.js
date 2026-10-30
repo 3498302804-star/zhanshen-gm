@@ -2005,7 +2005,7 @@
       : '<div class="muted small" style="padding:8px 0">还没有其他存档。点下面「新建存档」开一份新的。</div>';
 
     const d = openSheet(`
-      <h4>🗂 存档</h4>
+      <h4 class="sheet-ttl">🗂 存档</h4>
       <div class="sh-sub">每份存档各自带角色、对话、骰史和回合记录。切过去就接着那一条线走。</div>
       ${rows}
       <div class="sh-act">
