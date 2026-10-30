@@ -634,7 +634,46 @@
 
   /* 统一发请求：手机上（Capacitor 壳）走原生 HTTP，绕开 WKWebView 的跨域限制；
      浏览器里就走 fetch。返回 {ok, status, data}。 */
-  async function apiPost(url, payload, key) {
+  /* 地址归一化：用户很容易把地址填成 https://api.deepseek.com（没有 /chat/completions），
+     或者粘成 deepseek.com/chat/completions（没有协议头）。这两种都会让原生层跟着
+     302 一直跳，最后报 "too many http redirects"。这里统一补齐。 */
+  function normBase(u) {
+    let s = String(u || '').trim().replace(/\s+/g, '');
+    if (!s) return 'https://api.deepseek.com/chat/completions';
+    // 没有协议头就补 https://
+    if (!/^https?:\/\//i.test(s)) s = 'https://' + s;
+    // 只有域名/根路径：补上标准接口路径
+    let m;
+    try { m = new URL(s); } catch (e) { return s; }
+    let p = m.pathname.replace(/\/+$/, '');
+    if (p === '') {
+      p = '/chat/completions';
+    } else if (!/\/chat\/completions$/.test(p) && /(\/v1|\/api|\/api\/v1)$/.test(p)) {
+      p = p + '/chat/completions';
+    } else if (/\/chat\/completions$/.test(p)) {
+      /* 已经是完整接口，原样保留 */
+    }
+    if (p !== m.pathname) { m.pathname = p; s = m.toString(); }
+    return s;
+  }
+
+  /* 同一个主机可能对应不同路径：/chat/completions、/v1/chat/completions。
+     地址填错时先别急着报错，按顺序试一遍，哪个通就用哪个。 */
+  function urlCandidates(rawUrl) {
+    const base = normBase(rawUrl);
+    const list = [base];
+    try {
+      const m = new URL(base);
+      const origin = m.origin;
+      ['/chat/completions', '/v1/chat/completions'].forEach((p) => {
+        const u = origin + p;
+        if (list.indexOf(u) < 0) list.push(u);
+      });
+    } catch (e) { /* 不是合法 URL 就只试原样 */ }
+    return list;
+  }
+
+  async function apiPostOnce(url, payload, key) {
     const cap = window.Capacitor;
     const http = cap && cap.Plugins && cap.Plugins.CapacitorHttp;
     if (http && typeof http.post === 'function') {
@@ -647,17 +686,46 @@
       });
       let data = r.data;
       if (typeof data === 'string') { try { data = JSON.parse(data); } catch (e) { /* 保留原文 */ } }
-      return { ok: r.status >= 200 && r.status < 300, status: r.status, data };
+      return { ok: r.status >= 200 && r.status < 300, status: r.status, data, url };
     }
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key },
       body: JSON.stringify(payload),
+      redirect: 'follow',
     });
     let data;
     const txt = await res.text();
     try { data = JSON.parse(txt); } catch (e) { data = { raw: txt }; }
-    return { ok: res.ok, status: res.status, data };
+    return { ok: res.ok, status: res.status, data, url };
+  }
+
+  async function apiPost(rawUrl, payload, key) {
+    const cands = urlCandidates(rawUrl);
+    const tried = [];
+    let lastErr = null;
+    for (let i = 0; i < cands.length; i++) {
+      try {
+        const r = await apiPostOnce(cands[i], payload, key);
+        tried.push(cands[i] + ' → ' + r.status);
+        /* 路径不对的表现：404 / 405 / 3xx。换个路径再试，别急着把错摔给用户 */
+        if (!r.ok && (r.status === 404 || r.status === 405 || r.status === 301 || r.status === 302 || r.status === 308) && i < cands.length - 1) {
+          lastErr = new Error('路径不对：' + cands[i] + ' HTTP ' + r.status);
+          continue;
+        }
+        r.tried = tried;
+        return r;
+      } catch (e) {
+        const msg = String((e && e.message) || e);
+        tried.push(cands[i] + ' → ' + msg);
+        lastErr = e;
+        /* 重定向循环、跨域、网络中断：换下一条路径再试 */
+        if (/redirect|Load failed|Failed to fetch|Network|网络|超时|timed? ?out/i.test(msg) && i < cands.length - 1) continue;
+        throw new Error(msg + '\n（试过：' + tried.join('；') + '）');
+      }
+    }
+    const base = String((lastErr && lastErr.message) || '请求失败');
+    throw new Error(base + '\n（试过：' + tried.join('；') + '）');
   }
 
   async function sendAI(text) {
@@ -675,10 +743,16 @@
 
     const hist = ai.msgs.slice(-40);
     try {
-      const r = await apiPost(ai.base, { model: ai.model, messages: hist, temperature: 1.15, stream: false }, ai.key);
-      if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + JSON.stringify(r.data).slice(0, 300));
+      const body = { model: ai.model, messages: hist, stream: false };
+      // reasoner 系列不接受 temperature / top_p，带上会 400
+      if (!/reasoner|r1|thinking/i.test(String(ai.model))) body.temperature = 1.15;
+      const r = await apiPost(ai.base, body, ai.key);
+      if (!r.ok) {
+        const detail = typeof r.data === 'string' ? r.data : JSON.stringify(r.data);
+        throw new Error('HTTP ' + r.status + '　' + r.url + '\n' + String(detail).slice(0, 400));
+      }
       const out = r.data && r.data.choices && r.data.choices[0] && r.data.choices[0].message && r.data.choices[0].message.content;
-      if (!out) throw new Error('返回里没有正文：' + JSON.stringify(r.data).slice(0, 200));
+      if (!out) throw new Error('返回里没有正文：' + JSON.stringify(r.data).slice(0, 300));
       ai.msgs.push({ role: 'assistant', content: out });
       if (ai.msgs.length > 80) ai.msgs = ai.msgs.slice(0, 1).concat(ai.msgs.slice(-60));
     } catch (e) {
@@ -714,10 +788,12 @@
         <div class="hint" style="margin-top:8px">兼容 OpenAI 格式的都能用：DeepSeek、Moonshot、OpenRouter、本地 Ollama（http://127.0.0.1:11434/v1/chat/completions）等。如果用 file:// 打开被浏览器拦跨域，就运行「启动_本地服务器.bat」再进。</div>
         <div class="wrap-actions">
           <button class="primary" id="a_save">保存设置</button>
+          <button id="a_test">测试连接</button>
           <button id="a_new">开新对话（重发设定）</button>
           <button id="a_copy_sys">复制 GM 设定全文</button>
           <button id="a_export">导出对话</button>
         </div>
+        <div class="hint" id="a_testout" style="margin-top:8px"></div>
       </details>
 
       ${ai.error ? `<div class="card" style="border-color:#c0392b"><h3>上一次出错</h3><pre class="code">${esc(ai.error)}</pre></div>` : ''}
@@ -749,11 +825,31 @@
 
     const gs = $('#go_start');
     if (gs) gs.addEventListener('click', () => go('start'));
-    $('#a_save').addEventListener('click', () => {      ai.base = $('#a_base').value.trim() || ai.base;
+    $('#a_save').addEventListener('click', () => {      ai.base = normBase($('#a_base').value.trim() || ai.base);
       ai.model = $('#a_model').value.trim() || ai.model;
       ai.key = $('#a_key').value.trim();
       pushSys();
-      persist(); render(); toast('已保存');
+      persist(); render(); toast('已保存 · 地址 ' + ai.base);
+    });
+    $('#a_test').addEventListener('click', async () => {
+      const out = $('#a_testout');
+      const base = normBase($('#a_base').value.trim() || ai.base);
+      const key = ($('#a_key').value.trim() || ai.key);
+      const model = ($('#a_model').value.trim() || ai.model);
+      out.textContent = '正在连接 ' + base + ' …';
+      try {
+        const r = await apiPost(base, { model, messages: [{ role: 'user', content: 'ping' }], stream: false, max_tokens: 1 }, key);
+        const trail = (r.tried && r.tried.length > 1) ? '<br><span class="muted">试过：' + esc(r.tried.join(' ｜ ')) + '</span>' : '';
+        if (r.ok) {
+          out.innerHTML = '<span style="color:#6fbf73">连通 ✓　HTTP ' + r.status + '</span>　' + esc(r.url) + trail;
+        } else {
+          const d = typeof r.data === 'string' ? r.data : JSON.stringify(r.data);
+          out.innerHTML = '<span style="color:#c0392b">HTTP ' + r.status + '</span>　' + esc(r.url) + trail
+            + '<br>' + esc(String(d).slice(0, 300));
+        }
+      } catch (e) {
+        out.innerHTML = '<span style="color:#c0392b">没通</span><br>' + esc(String((e && e.message) || e)).replace(/\n/g, '<br>');
+      }
     });
     $('#a_new').addEventListener('click', () => {
       ai.msgs = [];
@@ -1419,7 +1515,7 @@
   window.__ZS = {
     get S() { return S; },
     set S(v) { S = v; },
-    go, render, persist, gmSystemPrompt, buildPrompt, dossierText, briefRows, fullRows, sendAI,
+    go, render, persist, gmSystemPrompt, buildPrompt, dossierText, briefRows, fullRows, sendAI, normBase, apiPost,
   };
 
   // 真机诊断角标：只在 Capacitor 壳里出现，用来确认 WebView 的视口宽度
